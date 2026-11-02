@@ -1247,6 +1247,93 @@ function App() {
     finally {setReading(false);if(fileRef.current)fileRef.current.value='';}
   }
   function stop(){if(workRef.current)diagLog('normal','user-cancel',{reason:'Stop pressed'},{chatId:workRef.current.id,turnId:workRef.current.turnId});workRef.current?.controller.abort();}
+  async function continueResponse(messageId){
+    if(busy||workRef.current||reading||!active)return;
+    const last=active.messages[active.messages.length-1];
+    if(!last||last.id!==messageId||last.role!=='assistant'||last.status!=='incomplete'||
+       !['output_limit','unfinished_code'].includes(last.incompleteReason))return;
+    const count=Number(last.continuations)||0;
+    if(count>=MAX_MANUAL_CONTINUATIONS){setNotice('Maximum six manual continuations per answer.');return;}
+    const provider=settings.provider,config={...settings.profiles[provider]};
+    if(provider==='demo'){setNotice('Test Mode cannot continue an external model response.');return;}
+    if(provider!=='ollama'&&!config.key.trim()){setNotice('Add a FREE-tier API key in Settings.');setSettingsOpen(true);return;}
+    try{
+      enforceFreeOnly(provider,config,settings);
+      if(LOCAL_CAPS[provider])checkCap(provider);
+    }catch(error){setNotice(error.message||String(error));return;}
+    const original=String(last.content||'');
+    if(!original.trim()){setNotice('There is no partial answer to continue.');return;}
+    const chatId=active.id,controller=new AbortController(),diagCtx={chatId,turnId:messageId,round:count+1,continuation:true};
+    let generated='',combined=original,lastPaint=0;
+    const patchAssistant=changes=>patchChat(chatId,c=>({
+      ...c,updatedAt:Date.now(),
+      messages:c.messages.map(m=>m.id===messageId?{...m,...changes}:m)
+    }));
+    const update=t=>{
+      generated+=t;
+      combined=mergeContinuedText(original,generated);
+      if(performance.now()-lastPaint>45){
+        patchAssistant({content:combined});
+        lastPaint=performance.now();
+      }
+    };
+    const messages=apiMessages(active,settings.systemPrompt);
+    const fence=unclosedCodeFence(original);
+    const constraint='You are continuing your immediately preceding assistant response. '+
+      'Output ONLY the missing suffix of that response, starting directly after its last character. '+
+      'Do not repeat text, restart the answer, add an introduction, or create another code block. '+
+      'If the prior response ends within an open Markdown code fence, remain inside that same fence '+
+      'and close it exactly once after finishing the code. Do not use tools.';
+    messages.unshift({role:'system',content:constraint});
+    messages.unshift({role:'system',content:runtimeDateContext()});
+    messages.push({role:'user',content:'Continue your immediately preceding answer, supplying only the next characters. '+
+      (fence?'It currently ends inside an open '+(fence.language||'code')+' fenced block. ':'')+
+      'Do not restart or repeat any part of it.'});
+    workRef.current={id:chatId,turnId:messageId,controller};
+    setBusy(chatId);
+    patchAssistant({status:'streaming',continuationError:null,continuations:count+1});
+    diagLog('normal','continuation-start',{
+      provider,model:config.model,previousChars:original.length,number:count+1,
+      openFence:!!fence,maxOutputTokens:outputTokenLimit(config)
+    },diagCtx);
+    try{
+      // A manual continuation is exactly one model call, never an automatic retry.
+      reserveFreeUse(provider);setUsageRevision(v=>v+1);
+      const response=await streamChat({
+        provider,profile:config,temperature:settings.temperature,messages,
+        signal:controller.signal,onToken:update,onSources:()=>{},
+        toolsEnabled:false,trace:diagCtx
+      });
+      if(/<dots_function_call>/i.test(response.content)){
+        throw new Error('The model emitted tool markup instead of continuing the answer.');
+      }
+      combined=mergeContinuedText(original,generated);
+      if(!generated.trim())throw new Error('The selected model returned no continuation text.');
+      const limited=['length','max_tokens','model_length'].includes(response.finishReason);
+      const fenceLeft=!!unclosedCodeFence(combined);
+      const reason=limited?'output_limit':fenceLeft?'unfinished_code':null;
+      patchAssistant({content:combined,status:reason?'incomplete':'done',
+        incompleteReason:reason,continuationError:null});
+      diagLog('normal','continuation-finished',{
+        provider,appendChars:combined.length-original.length,totalChars:combined.length,
+        finishReason:response.finishReason,incomplete:!!reason,openFence:fenceLeft
+      },diagCtx);
+    }catch(error){
+      combined=mergeContinuedText(original,generated);
+      const cancelled=error.name==='AbortError';
+      patchAssistant({content:combined,status:'incomplete',
+        incompleteReason:last.incompleteReason||'output_limit',
+        continuationError:cancelled?'Continuation stopped. The partial text has been preserved.':
+          (error.message||String(error))});
+      diagLog('normal',cancelled?'continuation-aborted':'continuation-error',{
+        message:cancelled?'User stopped continuation':(error.message||String(error)),
+        preservedChars:combined.length
+      },diagCtx);
+    }finally{
+      workRef.current=null;
+      setBusy(null);
+    }
+  }
   async function send() {
     if(busy||workRef.current||reading||(!draft.trim()&&!attachments.length)||!active)return;
     const provider=settings.provider,config={...settings.profiles[provider]};
