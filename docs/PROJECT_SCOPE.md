@@ -53,6 +53,13 @@ When adding file features, prefer the browser File API for explicit selection an
 - Ollama may be used as a local inference endpoint where browser connectivity is supported.
 - Offline/mock test mode should remain available.
 
+## Streaming chat interface
+
+- Render model-driven web searches and sources **above** the answer, in a single default-collapsed details panel. The header reads "Searching web..." while a web tool executes, then "Searched web" when it finishes. The panel can be expanded to inspect actual queries and source links. Do not show the panel for Web-enabled answers that did not use search.
+- Keep the message scroller attached to the bottom only while the user is within a small bottom threshold. Any upward scrolling should suspend automatic following during streaming, while returning near the bottom or tapping **Latest** resumes it. Sending a new message may intentionally jump to the newest content.
+- Replace the text-heavy Web toggle above the composer with a compact, labelled, accessible globe icon immediately next to the file-attachment button, with clearly distinguishable on/off states.
+- Preserve free-only guards, provider rotation, model tool support, diagnostics and other product boundaries.
+
 ## Date-aware, evidence-grounded research
 
 - Inject the current browser date/time, timezone and UTC date into every LLM request, including after tool calls. Do not rely on any model training cutoff as the current date.
