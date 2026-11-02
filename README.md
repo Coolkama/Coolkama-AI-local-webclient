@@ -1,6 +1,6 @@
-# Coolkama AI Local Web Client
+# Tight Arse AI
 
-A standalone, mobile-first LLM workbench and chat client built as a **single client-side HTML file**. It can be opened locally or served as a **static webpage**. It is **not part of** the separate PC-hosted Coolkama AI ecosystem.
+A standalone, mobile-first, free-tier-first LLM chat and web-search client built as a **single client-side HTML file**. The existing GitHub repository retains its original `Coolkama-AI-local-webclient` name. It can be opened locally or served as a **static webpage**. It is **not part of** the separate PC-hosted Coolkama AI ecosystem.
 
 > **Project requirements:** [Scope and guardrails](docs/PROJECT_SCOPE.md). Read these before making changes.
 
@@ -76,7 +76,7 @@ When this happens **after sources have already been retrieved**, the workbench a
 
 The workbench does not silently switch to a paid model, Groq hosted browser search, or another provider. OpenRouter's deliberately rotating Any Free Model option remains unaffected. These paths are recorded in Full Trace diagnostics.
 
-**Rate-limit recovery:** if Groq rejects a later model request (for example, HTTP 429 for its tokens-per-minute allowance), any search results and opened-page extracts already attached to the failed assistant message remain usable as untrusted evidence on the next turn. The model can answer a follow-up such as “Summarise the previous results” without losing those sources. This does not raise or bypass Groq's provider rate limits, nor does it automatically retry a rejected inference request.
+**Rate-limit recovery:** if Groq rejects a later model request (for example, HTTP 429 for its tokens-per-minute allowance), any search results and opened-page extracts already attached to the failed assistant message remain usable as untrusted evidence on the next turn. The model can answer a follow-up such as “Summarise the previous results” without losing those sources. This does not raise or bypass Groq's provider rate limits, and the separate automatic Groq retry mechanism may wait for a reported rate-limit reset before resending a rejected request, subject to free-tier safeguards.
 
 ## Model-driven page opening (`web_open`)
 
@@ -88,11 +88,12 @@ The model may make at most **three web searches and three new page opens per use
 
 The collapsed **Searched web** panel displays search queries, opened pages and source links, including which sources were read. The normal/detailed/full local diagnostics record extraction timing, failures, the returned text (Full Trace) and cache hits. The tool schema is made available dynamically when the corresponding per-turn budget permits. Both OpenAI-compatible structured function calls and the supported Dots-style textual calls can request `web_open`; OpenRouter's Any Free Model rotation remains enabled.
 
-## Output limits and truncated generations
+## Per-request output length (Automatic by default)
 
-- An LLM request can complete with HTTP 200 and `finish_reason: "length"`, even though its answer/code is **unfinished**. The Workbench marks this as **Incomplete** and tells the user to increase the configured maximum output tokens or request a continuation. A partial HTML, JavaScript or Markdown code fence must **not** be presented as a finished artifact. The `output-truncated` diagnostic event includes the configured cap and any available usage/reasoning-token totals.
-- **Settings → Maximum output tokens** is independently saved per provider/model profile: 1,024, 2,048, 3,072, 4,096, 6,144 or 8,192. For existing Groq profiles without an explicit cap, the new default is **4,096**; other providers retain the conservative 2,048 default. All values are bounded to 512–8,192 in requests, even if browser storage is manually edited.
-- Larger outputs may increase free-tier token-per-minute pressure and cause HTTP 429. The app does **not** automatically resend, spend additional inference requests or switch to a paid model after truncation. The user chooses whether to regenerate with a larger cap or ask the model to continue. Model-specific output caps may also be lower than the selected value.
+- **Settings → Output length → Automatic** is the default for all providers. The app **omits `max_tokens`** from OpenAI-compatible requests and lets the provider/model determine its own maximum output length. There is no client-imposed 2,048 / 4,096 / 8,192-token cap in this mode.
+- **Manual token limit** is an optional positive whole-number override, stored separately for each provider profile. Only explicitly selecting Manual sends `max_tokens: N`. Existing saved 2,048/4,096-token preferences are retained for possible manual use but no longer silently restrict requests following the migration.
+- Provider/model output allowances, context constraints, rate-limit caps and free-tier account quotas **still apply**. Groq may reject an oversized single request or later throttle tokens-per-minute; the existing bounded Groq wait/retry and local conservative counters remain active.
+- When `finish_reason: "length"` indicates a truncated response, the answer remains incomplete unless a continuation actually finishes it. Diagnostics record `maxTokens: null` in Automatic mode and the actual manual override when selected.
 
 ## Continue truncated answers in place
 
@@ -100,13 +101,13 @@ When a free model reaches its output-token allowance (`finish_reason: "length"`)
 
 Each explicit button press makes **one new free-tier-capped LLM inference request**, with tools disabled and a strict continuation instruction. It appends the new text to the **existing assistant message** instead of creating another chat message. It preserves the original code fence, trims a repeated start fence or small overlapping suffix when possible, and keeps the response incomplete if it reaches the limit again or leaves code unclosed. An interrupted or failed continuation preserves the previous text. Up to **six manual continuations per answer** are permitted. The button is restricted to the latest assistant message to keep conversation history coherent.
 
-There is **no automatic continuation**, billing fallback, additional Tavily usage or model pinning. Each manual continuation consumes the current provider's free inference allowance and may still hit provider token-per-minute or context limits. Exact character-perfect continuation is model-dependent; the client only corrects common repeated fences and short overlaps. Full Trace records `continuation-start`, `continuation-finished` and failure/stop events.
+Automatic continuation is enabled by default (see below), while **Continue writing** remains a manual fallback when generation stops incomplete. There is no billing fallback, additional Tavily usage or model pinning. Each manual continuation consumes the current provider's free inference allowance and may still hit provider token-per-minute or context limits. Exact character-perfect continuation is model-dependent; the client only corrects common repeated fences and short overlaps. Full Trace records `continuation-start`, `continuation-finished` and failure/stop events.
 
 ## Rolling context window
 
 Long conversations now use a **deterministic, rolling request context** instead of sending the entire saved history to the model every time. Only the API request is windowed; the complete chat, source links, attachments and partial answers remain in local browser storage. There are **no summarisation inference calls** and no additional Tavily requests.
 
-In **Settings → Rolling context window**, select an approximate *input-token* budget per provider: 2,048, 3,072, 4,096, 8,192, 16,384, 32,768 or 65,536. Existing Groq profiles default to **3,072 estimated input tokens**, leaving room beside the independently configured 4,096 output-token cap under its restrictive free-tier tokens-per-minute allowance. Other providers default to 8,192 estimated input tokens. The client estimates input tokens conservatively from text length and approximates image cost; **it is not a model tokenizer**, doesn't know a rotating model's exact context size and cannot guarantee the provider's TPM limits.
+In **Settings → Rolling context window**, select an approximate *input-token* budget per provider: 2,048, 3,072, 4,096, 8,192, 16,384, 32,768 or 65,536. Existing Groq profiles default to **3,072 estimated input tokens** as a conservative rolling-input budget under its restrictive free-tier tokens-per-minute allowance. Output length is independently set to Automatic (provider decides) unless the user explicitly switches to Manual. Other providers default to 8,192 estimated input tokens. The client estimates input tokens conservatively from text length and approximates image cost; **it is not a model tokenizer**, doesn't know a rotating model's exact context size and cannot guarantee the provider's TPM limits.
 
 The client always keeps the system instructions and current date, plus the most recent two conversational turns. If these exceed the selected budget, it shortens long excerpts (marking omitted spans). Older *complete* turns are included newest-first only while they fit, and omitted from the request once the budget is exhausted. The structure of model tool calls and their matching results is never separated; shortened tool results remain valid JSON where possible. Research links/indices are preferred over verbose excerpts. Every inference round—including web searches, Groq text-only recovery and explicit code continuation—is re-windowed from the locally retained source context.
 
