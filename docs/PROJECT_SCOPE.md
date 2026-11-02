@@ -60,6 +60,12 @@ When adding file features, prefer the browser File API for explicit selection an
 - Replace the text-heavy Web toggle above the composer with a compact, labelled, accessible globe icon immediately next to the file-attachment button, with clearly distinguishable on/off states.
 - Preserve free-only guards, provider rotation, model tool support, diagnostics and other product boundaries.
 
+## Output length and code completion
+
+- Surface any provider `finish_reason: "length"` or equivalent as an **incomplete** response, never success. Preserve the partial text for recovery, and log the output cap and token usage.
+- Allow users to set a conservative maximum output token allowance per provider profile, with Groq defaulting to 4,096 for longer code tasks while preserving other providers' 2,048 default. Never exceed 8,192 from an untrusted persisted value.
+- No automatic retries or paid fallbacks for lengthy generation; warn that higher caps can hit independent provider token-per-minute and model-specific limits.
+
 ## Model-controlled page extraction
 
 - Offer `web_open(index)` in addition to `web_search(query, time_range?)`. Only accept a validated 1-based index of a Tavily search result already returned **within the current user turn**. Never allow the model to choose an arbitrary URL or make browser requests to random websites.
