@@ -52,3 +52,10 @@ If diagnosing a search failure, enable Detailed or Full Trace, reproduce the que
 - Full Trace records the injected date, search filter, tool-source map and citation audit, so future problematic replies can be investigated directly.
 
 Suggested manual tests with Web enabled: ask for recent black-hole research, today's Liverpool cinema showtimes, a historical academic result from 2024, and an answer with citations. With Diagnostics → Full Trace enabled, inspect the requests for correct date awareness, recency filtering, stable source IDs and citation warnings. Provider behaviour remains variable because automatic free-model rotation is intentional.
+
+## Streaming chat interface
+
+- The composer has a compact, icon-only **globe** switch immediately beside the attachment paperclip. A highlighted globe means web search is enabled. It remains accessible via an on/off label and the settings panel.
+- When the model requests web search, its assistant reply displays a **collapsed activity section above the answer**: **Searching web...** while Tavily is running, then **Searched web** when the current search completes. Expand it to see the queries and retrieved source links; neither is repeated below the answer. No search activity box appears if the model does not actually call web search.
+- Chat **automatically follows streaming content only when the reader is near the bottom**. Scrolling up suspends follow, allowing the response to be read before generation finishes. Returning near the bottom re-enables follow, and the floating **Latest** button jumps back to the end. Sending a new message intentionally returns the view to the newest reply.
+- These are interface changes only: provider selection (including OpenRouter's intentionally rotating free model), tool-call handling, usage safeguards and local diagnostics remain in place.
