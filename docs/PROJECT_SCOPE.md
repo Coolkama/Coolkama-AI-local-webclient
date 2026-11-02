@@ -45,6 +45,10 @@ When adding file features, prefer the browser File API for explicit selection an
 
 - The remote-model selection policy is **free-only**: no paid model fallback or automatic upgrade.
 - Web search must use user-approved, free-tier-compatible approaches; do not silently enable chargeable search features.
+- The browser exposes a `web_search` function to a tool-capable LLM when the user enables Web mode. The model uses conversation history to choose self-contained queries and may make follow-up searches. The browser executes Tavily Basic searches, returns structured evidence to the model, and displays the source links plus search queries in the chat. No automatic pre-search using the raw newest user message.
+- Each external search and each LLM round-trip consumes one unit of the respective local request counter. Allow at most **three Tavily searches per user message**, with a selectable smaller maximum. No paid search, silent fallback or unbounded search loop.
+- Some models lack OpenAI-compatible function calling; report unsupported tool use clearly rather than switching to a paid model or silently reverting to a less reliable method.
+- Model-created Tavily search queries may include user conversation details, so explain this in the UI; treat retrieved web content as untrusted evidence, never instructions.
 - Surface provider quotas and client-side usage stops. **Client-side counters do not guarantee zero charges on an account with billing enabled**; provider-side free-plan/billing protection is still necessary.
 - Ollama may be used as a local inference endpoint where browser connectivity is supported.
 - Offline/mock test mode should remain available.
