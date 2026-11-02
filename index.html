@@ -1026,6 +1026,13 @@ function continuationBoundaryIssue(previous,generated){
   const startHtml=/(?:^|\n)\s*<(?:!doctype\s+html|html\b|head\b|body\b)/i;
   if(startHtml.test(first.slice(0,500))&&/<html\b/i.test(before))
     return 'Model restarted an earlier HTML section instead of continuing.';
+  // Reject the same declaration even if the model rewrites its contents.
+  const declaration=/^(?:function\s+([A-Za-z_$][\w$]*)\s*\(|(?:const|let|class)\s+([A-Za-z_$][\w$]*)\b)/.exec(first);
+  if(declaration){
+    const name=(declaration[1]||declaration[2]).replace(/\$/g,'\\$');
+    if(new RegExp('(?:^|\\n)\\s*(?:function\\s+'+name+'\\s*\\(|(?:const|let|class)\\s+'+name+'\\b)').test(before))
+      return 'Continuation attempted to redeclare an earlier function or variable instead of continuing.';
+  }
   if(/^(?:html|htm)$/i.test(fence.language||'')){
     const openScript=Math.max(...[...before.matchAll(/<script\b[^>]*>/gi)].map(m=>m.index),-1);
     const closeScript=Math.max(...[...before.matchAll(/<\/script\s*>/gi)].map(m=>m.index),-1);
