@@ -1630,7 +1630,7 @@ function App() {
     const diagCtx={chatId,turnId:assistantId};
     diagLog('normal','turn-start',{provider,requestedModel:config.model,webEnabled:!!searchMode,attachedFiles:files.map(f=>({name:f.name,type:f.type,truncated:!!f.truncated})),historyMessages:nextThread.messages.length-2},diagCtx);
     diagLog('full','user-message',{text:content},diagCtx);
-    let output='',lastPaint=0,allSources=[],searchLog=[],openLog=[],incomplete=false,incompleteReason=null;
+    let output='',lastPaint=0,allSources=[],searchLog=[],openLog=[],incomplete=false,incompleteReason=null,autoEligible=false,autoRounds=0;
     const openedPages=new Map(),openFailures=new Map();
     const patchAssistant=changes=>patchChat(chatId,c=>({...c,updatedAt:Date.now(),messages:c.messages.map(m=>m.id===assistantId?{...m,...changes}:m)}));
     const paint=()=>patchAssistant({content:output});
@@ -1741,13 +1741,14 @@ function App() {
               reasoningTokens:response.usage?.completion_tokens_details?.reasoning_tokens||null,
               textChars:output.length,partialToolCalls:calls.length
             },roundCtx);
+            autoEligible=!calls.length&&!!output.trim();
             if(!output.trim())output=sourceOnlyAnswer(allSources,'The model exhausted its output token allowance before completing its response.');
             paint();answered=true;break;
           }
           if(!calls.length){
             if(response.finishReason==='tool_calls')throw new Error('Model requested a tool but did not provide a valid tool call.');
             if(unclosedCodeFence(output)){
-              incomplete=true;incompleteReason='unfinished_code';
+              incomplete=true;incompleteReason='unfinished_code';autoEligible=true;
               diagLog('normal','unfinished-code-fence',{provider,model:response.actualModel||config.model,chars:output.length},roundCtx);
             }
             answered=true;
@@ -1838,6 +1839,79 @@ function App() {
             messages.push({role:'tool',tool_call_id:call.id,content:JSON.stringify(result)});
           }
           if(searchMode)status('AI reviewing search evidence…');
+        }
+        if(settings.autoContinue!==false&&autoEligible&&output.trim()&&
+            ['output_limit','unfinished_code'].includes(incompleteReason)){
+          const continueRule='You are continuing your immediately preceding assistant answer. '+
+            'Produce only the missing suffix, beginning directly after its final character. '+
+            'Do not repeat text, add introductions, restart code or reopen its Markdown code fence. '+
+            'Close an existing code fence once the code is complete. Do not invoke any tools.';
+          while(autoRounds<MAX_AUTO_CONTINUATIONS){
+            if(controller.signal.aborted)throw new DOMException('Stopped','AbortError');
+            const previous=output;
+            const nextRound=autoRounds+1;
+            const previousFence=unclosedCodeFence(previous);
+            const followup=[
+              {role:'system',content:runtimeDateContext()},
+              {role:'system',content:continueRule},
+              ...messages,
+              {role:'assistant',content:previous},
+              {role:'user',content:'Continue exactly where the preceding answer ended. '+
+                (previousFence?'It ends inside a '+(previousFence.language||'code')+' Markdown fence. ':'')+
+                'Reply with only the remaining text, no repetition.'}
+            ];
+            const windowed=rollContextMessages(followup,config);
+            patchAssistant({contextWindow:windowed.stats,searchStatus:null});
+            autoRounds++;
+            const ctx={...diagCtx,round:autoRounds,autoContinuation:true};
+            diagLog('normal','auto-continuation-start',{
+              attempt:autoRounds,priorChars:previous.length,
+              maxAttempts:MAX_AUTO_CONTINUATIONS,
+              hasOpenFence:!!previousFence,...windowed.stats
+            },ctx);
+            let continuation='';
+            try{
+              const response=await streamChatWithRateWait({
+                provider,profile:config,temperature:settings.temperature,
+                messages:windowed.messages,signal:controller.signal,
+                onToken:part=>{
+                  continuation+=part;
+                  output=mergeContinuedText(previous,continuation);
+                  if(performance.now()-lastPaint>45){paint();lastPaint=performance.now();}
+                },
+                onSources:()=>{},toolsEnabled:false,trace:ctx
+              },()=>setUsageRevision(v=>v+1));
+              if(response.toolCalls?.length||/<dots_function_call>/i.test(response.content)){
+                output=previous;paint();
+                throw new Error('Model generated a tool call instead of finishing text.');
+              }
+              output=mergeContinuedText(previous,continuation);
+              if(!continuation.trim()){
+                output=previous;
+                throw new Error('Model returned no additional text.');
+              }
+              const limit=['length','max_tokens','model_length'].includes(response.finishReason);
+              const openFence=!!unclosedCodeFence(output);
+              incomplete=limit||openFence;
+              incompleteReason=limit?'output_limit':openFence?'unfinished_code':null;
+              diagLog('normal','auto-continuation-finished',{
+                attempt:autoRounds,addedChars:output.length-previous.length,
+                totalChars:output.length,finishReason:response.finishReason,
+                stillIncomplete:incomplete
+              },ctx);
+              if(!incomplete)break;
+            }catch(error){
+              if(error.name==='AbortError')throw error;
+              output=mergeContinuedText(previous,continuation);
+              incomplete=true;
+              incompleteReason=unclosedCodeFence(output)?'unfinished_code':'output_limit';
+              diagLog('normal','auto-continuation-stopped',{
+                attempt:autoRounds,error:error.message||String(error),
+                preservedChars:output.length
+              },ctx);
+              break;
+            }
+          }
         }
       }
       paint();
