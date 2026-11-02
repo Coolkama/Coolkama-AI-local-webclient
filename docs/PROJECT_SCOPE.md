@@ -64,10 +64,17 @@ When adding file features, prefer the browser File API for explicit selection an
 
 - Construct a rolling **model request** on every inference round from the full locally retained conversation; do not delete or rewrite historical UI messages. Do not spend extra inference calls on summarisation. For continuation calls, preserve the **exact end** of the previous response when shortening the context and include it only once, as the immediately preceding assistant turn.
 - Preserve system messages/current date, the latest two conversational turns and paired assistant tool calls/tool results. Older complete turns can fall outside the window. If recent required content exceeds the selected budget, visibly mark abbreviated excerpts; retain tool-call IDs and tool-result shape.
-- Expose an estimated per-provider input budget (2,048–65,536 tokens), with Groq default 3,072 to reduce its free-tier token-per-minute pressure, other providers 8,192. Keep optional manual **output** tokens as a separate setting; Automatic must omit the provider `max_tokens` argument. Clearly state that text/vision token estimates are not a model-specific tokenizer or a guarantee against provider 429 or context-length errors.
+- Expose an estimated per-provider input budget (2,048–65,536 tokens), with Groq default **8,192** for more reliable code continuation, and other providers defaulting to 8,192. Migrate existing Groq profiles still on the old 3,072 default once while retaining other user-selected budgets. The larger Groq input may increase token-rate waits. Keep optional manual **output** tokens as a separate setting; Automatic must omit the provider `max_tokens` argument. Clearly state that text/vision token estimates are not a model-specific tokenizer or a guarantee against provider 429 or context-length errors.
 - Reapply rolling selection for each new provider request, including model-requested web tools, recovery and manual answer continuation. Always preserve original source evidence in browser storage, with relevant URLs still accessible in the UI.
 - Log window estimates, dropped complete turns, shortened excerpts and any unavoidable over-budget cases. Show a concise context disclosure beside the relevant assistant response.
 - Retain free-only caps, model selection including rotating OpenRouter free routing and static browser-only architecture.
+
+## Provider-specific continuation and caching
+
+- Route continuation requests through a provider-specific strategy, not one universal prompt shape. Groq GPT-OSS 20B/120B may use an ending `assistant` message as a prefill; do not append a second user continuation request in that mode. Include the previous assistant text **exactly once**.
+- Default Groq GPT-OSS prefilling to enabled, with a provider-profile checkbox to disable it if a specific model rejects the request. Other Groq models, OpenRouter, Gemini and Ollama continue using the normal assistant-plus-user message protocol until their capabilities are explicitly verified.
+- Groq automatic prompt caching is server-side, opportunistic, and requires no separate caching call or session identifier. Preserve the static prompt prefix and a stable date-context message within a single answer for cache friendliness, while respecting context-window truncation and freshness on new turns.
+- Retain the buffered overlap joiner, incomplete-code detection, Groq free-only account safeguards, bounded 429 waits and diagnostic logging of the protocol. Do not imply that prefill or cached tokens guarantee correctness or avoidance of rate limits.
 
 ## Seamless completion and bounded rate waits
 
