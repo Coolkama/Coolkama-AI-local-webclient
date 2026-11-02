@@ -76,6 +76,8 @@ When this happens **after sources have already been retrieved**, the workbench a
 
 The workbench does not silently switch to a paid model, Groq hosted browser search, or another provider. OpenRouter's deliberately rotating Any Free Model option remains unaffected. These paths are recorded in Full Trace diagnostics.
 
+**Rate-limit recovery:** if Groq rejects a later model request (for example, HTTP 429 for its tokens-per-minute allowance), any search results and opened-page extracts already attached to the failed assistant message remain usable as untrusted evidence on the next turn. The model can answer a follow-up such as “Summarise the previous results” without losing those sources. This does not raise or bypass Groq's provider rate limits, nor does it automatically retry a rejected inference request.
+
 ## Model-driven page opening (`web_open`)
 
 When Web is enabled, a tool-capable model can now call either `web_search(query, time_range?)` **or** `web_open(index)`. `web_open` reads the 1-based numbered result returned by a search **in the current user turn**, using Tavily's **Basic Extract API**. This avoids the invalid `web_search({index: 2})` calls observed with Groq. Only URLs from actual search results may be opened; the model cannot make arbitrary URL-fetch requests. Previously opened pages are cached for the remainder of the turn, so reopening the same source doesn't spend another Tavily credit.
