@@ -1882,6 +1882,7 @@ function App() {
                 onSources:()=>{},toolsEnabled:false,trace:ctx
               },()=>setUsageRevision(v=>v+1));
               if(response.toolCalls?.length||/<dots_function_call>/i.test(response.content)){
+                continuation='';
                 output=previous;paint();
                 throw new Error('Model generated a tool call instead of finishing text.');
               }
