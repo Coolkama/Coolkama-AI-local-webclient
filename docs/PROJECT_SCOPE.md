@@ -53,6 +53,15 @@ When adding file features, prefer the browser File API for explicit selection an
 - Ollama may be used as a local inference endpoint where browser connectivity is supported.
 - Offline/mock test mode should remain available.
 
+## Date-aware, evidence-grounded research
+
+- Inject the current browser date/time, timezone and UTC date into every LLM request, including after tool calls. Do not rely on any model training cutoff as the current date.
+- Preserve **OpenRouter Any Free Model rotation**. Different free models may legitimately handle successive inference rounds; keep full tool-call messages and tool results in the conversation each time. Never pin models without a user selection.
+- Keep Tavily **Basic** search and the existing no-billing assumptions, request caps and maximum search-iteration budget. Use optional publication `time_range` filters for current-news intent; do not accidentally filter evergreen live listings, or overrule explicitly requested historical periods.
+- Give tool results stable source indices across searches, deduplicate URLs and pass publication metadata only if the provider supplies it. Favour breadth and primary, dated research evidence rather than repeated searches for already-supported findings.
+- Show a provenance warning for answer URLs not in retrieved results, out-of-range numeric references or absent traceable citations. Log the audit for inspection. Do not present this as independent fact-checking or full-page retrieval.
+- Preserve the single-file static deployment, browser-only API calls, full diagnostics and no paid fallback.
+
 ## Local diagnostics
 
 - Normal, Detailed and opt-in Full Trace modes are available in the browser UI. Diagnostics are for troubleshooting provider/model selection, streaming, search and tool orchestration, and do not change inference or search behaviour.
