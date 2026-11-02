@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#020617" />
-  <title>LLM Workbench · Chat</title>
+  <title>Tight Arse AI · Chat</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -324,7 +324,7 @@ async function diagExport(chatId=null){
       detail:readError||diagArchiveError||'Record missing'
     }
   }:e);
-  const payload={format:'Coolkama LLM Workbench diagnostics',schemaVersion:2,
+  const payload={format:'Tight Arse AI diagnostics',schemaVersion:2,
     exportedAt:new Date().toISOString(),level:diagLevel(),scope:chatId?'conversation':'all',
     disclosure:'Export remains local until you share it. Full Trace can contain messages, documents, images and search results. Authentication credentials are redacted on a best-effort basis. Inspect before sharing.',
     traceErrors:readError||diagArchiveError||null,events};
@@ -383,16 +383,20 @@ const PROVIDERS = {
     models: [['offline-demo','Offline streaming simulator']]
   }
 };
-const freshProfiles = () => Object.fromEntries(Object.entries(PROVIDERS).map(([id,p]) => [id, { key:'', url:p.url, model:p.model, maxTokens:id==='groq'?4096:2048, contextTokens:id==='groq'?3072:8192 }]));
-const MAX_OUTPUT_TOKENS = 8192;
+const freshProfiles = () => Object.fromEntries(Object.entries(PROVIDERS).map(([id,p]) => [id, { key:'', url:p.url, model:p.model, maxTokens:id==='groq'?4096:2048, outputLimitMode:'auto', contextTokens:id==='groq'?3072:8192 }]));
 const CONTEXT_WINDOW_CHOICES = [2048,3072,4096,8192,16384,32768,65536];
 function contextInputLimit(profile){
   const n=Number(profile?.contextTokens);
   return Number.isFinite(n)?Math.max(2048,Math.min(65536,Math.trunc(n))):8192;
 }
 function outputTokenLimit(profile){
+  // Legacy saved maxTokens values stay available for Manual mode, but do not
+  // constrain output unless the user has explicitly enabled that mode.
+  if(profile?.outputLimitMode!=='manual')return null;
   const value=Number(profile?.maxTokens);
-  return Number.isFinite(value)?Math.max(512,Math.min(MAX_OUTPUT_TOKENS,Math.trunc(value))):2048;
+  if(!Number.isSafeInteger(value)||value<1)
+    throw new Error('Manual output limit must be a positive whole number. Choose Automatic to use the provider default.');
+  return value;
 }
 const defaultSearch = () => ({ enabled:false, mode:'tavily', tavilyKey:'', maxResults:4, maxToolSearches:3, tavilyFreeConfirmed:false });
 const defaults = () => ({ provider:'openrouter', temperature:0.7, autoContinue:true, systemPrompt:'You are a helpful, accurate assistant. Format code using fenced Markdown code blocks with language identifiers.', profiles:freshProfiles(), search:defaultSearch(), freeTierConfirmed:{openrouter:false,groq:false,gemini:false} });
@@ -1041,8 +1045,10 @@ async function streamChat({provider, profile, temperature, messages, signal, onT
   // Full request is logged below after the exact payload has been constructed.
   const headers={'Content-Type':'application/json'};
   if(provider !== 'ollama') headers.Authorization=`Bearer ${profile.key.trim()}`;
-  if(provider==='openrouter') {headers['HTTP-Referer']=location.origin==='null'?'https://openrouter.ai':location.origin;headers['X-Title']='LLM Workbench';}
-  const payload={model:profile.model.trim(),messages,temperature:Number(temperature),stream:true,max_tokens:maxTokens};
+  if(provider==='openrouter') {headers['HTTP-Referer']=location.origin==='null'?'https://openrouter.ai':location.origin;headers['X-Title']='Tight Arse AI';}
+  const payload={model:profile.model.trim(),messages,temperature:Number(temperature),stream:true};
+  // Omitting max_tokens lets the provider/model choose its own output allowance.
+  if(maxTokens!==null)payload.max_tokens=maxTokens;
   if(toolsEnabled||finalOnly) {
     payload.tools=toolDefinitions;
     payload.tool_choice=finalOnly?'none':'auto';
@@ -1213,7 +1219,7 @@ async function streamChatWithRateWait(options,onReserved=()=>{}){
   }
 }
 async function demoStream(prompt,signal,onToken) {
-  const reply = `## Test mode is working ✨\n\nYour message was: **${prompt.trim().slice(0,140)||'an attachment'}**\n\nThis response is being streamed in small chunks without contacting an LLM. Try the **Copy** and **Save** buttons on this code block:\n\n\`\`\`javascript\nconst greeting = 'Hello from LLM Workbench!';\nconsole.log(greeting);\n\`\`\`\n\n- **Markdown** and syntax highlighting are enabled.\n- Chats, settings and attachments are stored in your browser.\n- Switch to a real provider in **Settings** to start chatting.`;
+  const reply = `## Test mode is working ✨\n\nYour message was: **${prompt.trim().slice(0,140)||'an attachment'}**\n\nThis response is being streamed in small chunks without contacting an LLM. Try the **Copy** and **Save** buttons on this code block:\n\n\`\`\`javascript\nconst greeting = 'Hello from Tight Arse AI!';\nconsole.log(greeting);\n\`\`\`\n\n- **Markdown** and syntax highlighting are enabled.\n- Chats, settings and attachments are stored in your browser.\n- Switch to a real provider in **Settings** to start chatting.`;
   for(const chunk of reply.match(/.{1,7}|\n/g) || []) { await wait(36,signal);onToken(chunk); }
 }
 function Icon({name,size=19,className=''}) {
@@ -1466,7 +1472,21 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
           </select>
           <p className="text-[11px] text-slate-400 mt-1">Keeps the latest two conversation turns, shortens oversized excerpts and drops older turns only from the API request. The full chat stays in this browser. No LLM summarisation calls. Estimates vary by model; choose a smaller window on Groq to reduce tokens-per-minute pressure.</p>
         </div>
-        <div><label className="block text-xs font-semibold text-slate-300 mb-2">Maximum output tokens (per model request)</label><select className="field" value={outputTokenLimit(profile)} onChange={e=>patchProfile({maxTokens:Number(e.target.value)})}>{[1024,2048,3072,4096,6144,8192].map(n=><option key={n} value={n}>{n.toLocaleString('en-GB')} tokens</option>)}</select><p className="text-[11px] text-slate-400 mt-1">Long webpages and code may require 4,096–8,192 tokens. This is a maximum, not a guarantee. Higher settings can exceed free provider token-per-minute limits; choose the smallest that works.</p></div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-300 mb-2">Output length (per model request)</label>
+          <select className="field" value={profile.outputLimitMode==='manual'?'manual':'auto'}
+            onChange={e=>patchProfile({outputLimitMode:e.target.value})}>
+            <option value="auto">Automatic · provider/model decides</option>
+            <option value="manual">Manual token limit</option>
+          </select>
+          {profile.outputLimitMode==='manual'&&<div className="mt-2">
+            <label className="block text-xs text-slate-300 mb-1">Maximum output tokens</label>
+            <input className="field" type="number" min="1" step="1" inputMode="numeric"
+              value={profile.maxTokens??''}
+              onChange={e=>patchProfile({maxTokens:e.target.value===''?'':Number(e.target.value)})}/>
+          </div>}
+          <p className="text-[11px] text-slate-400 mt-1">Automatic sends no max_tokens parameter, so the provider decides how much to generate in one request. Provider output and token-per-minute quotas still apply, especially on Groq. Manual limits are optional and apply only when selected.</p>
+        </div>
         <label className="flex gap-3 items-start rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-xs leading-5 text-slate-300">
           <input type="checkbox" className="mt-1 h-4 w-4 accent-indigo-500 shrink-0"
             checked={value.autoContinue!==false} onChange={e=>patch({autoContinue:e.target.checked})}/>
@@ -1991,7 +2011,7 @@ function App() {
     {drawer&&<div className="fixed inset-0 z-20 bg-black/65 md:hidden" onClick={()=>setDrawer(false)}/>}
     <aside className={`fixed md:relative inset-y-0 left-0 z-30 w-[min(84vw,310px)] md:w-[280px] shrink-0 flex flex-col border-r border-slate-800 bg-slate-900 safe-top safe-bottom transform transition-transform duration-200 ${drawer?'translate-x-0':'-translate-x-full md:translate-x-0'}`}>
       <div className="px-4 pt-5 pb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2.5"><div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-700 grid place-items-center shadow-lg shadow-indigo-800/30"><Icon name="spark"/></div><div><div className="font-bold text-sm">LLM Workbench</div><div className="text-[10px] uppercase tracking-[.18em] text-slate-500">Chat client</div></div></div>
+        <div className="flex items-center gap-2.5"><div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-700 grid place-items-center shadow-lg shadow-indigo-800/30"><Icon name="spark"/></div><div><div className="font-bold text-sm">Tight Arse AI</div><div className="text-[10px] uppercase tracking-[.18em] text-slate-500">Chat client</div></div></div>
         <button className="md:hidden text-slate-400 p-2" onClick={()=>setDrawer(false)} aria-label="Close drawer"><Icon name="x"/></button>
       </div>
       <button onClick={addChat} className="btn btn-primary mx-4 mb-5"><Icon name="plus" size={16}/> New conversation</button>
