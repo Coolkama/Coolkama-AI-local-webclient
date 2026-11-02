@@ -60,6 +60,15 @@ When adding file features, prefer the browser File API for explicit selection an
 - Replace the text-heavy Web toggle above the composer with a compact, labelled, accessible globe icon immediately next to the file-attachment button, with clearly distinguishable on/off states.
 - Preserve free-only guards, provider rotation, model tool support, diagnostics and other product boundaries.
 
+## Rolling input context window
+
+- Construct a rolling **model request** on every inference round from the full locally retained conversation; do not delete or rewrite historical UI messages. Do not spend extra inference calls on summarisation.
+- Preserve system messages/current date, the latest two conversational turns and paired assistant tool calls/tool results. Older complete turns can fall outside the window. If recent required content exceeds the selected budget, visibly mark abbreviated excerpts; retain tool-call IDs and tool-result shape.
+- Expose an estimated per-provider input budget (2,048–65,536 tokens), with Groq default 3,072 to reduce its free-tier token-per-minute pressure, other providers 8,192. Keep maximum **output** tokens as a separate setting. Clearly state that text/vision token estimates are not a model-specific tokenizer or a guarantee against provider 429 or context-length errors.
+- Reapply rolling selection for each new provider request, including model-requested web tools, recovery and manual answer continuation. Always preserve original source evidence in browser storage, with relevant URLs still accessible in the UI.
+- Log window estimates, dropped complete turns, shortened excerpts and any unavoidable over-budget cases. Show a concise context disclosure beside the relevant assistant response.
+- Retain free-only caps, model selection including rotating OpenRouter free routing and static browser-only architecture.
+
 ## In-place output continuation
 
 - Offer a **Continue writing** action on the latest assistant reply when it ends at the output limit or with a visibly unfinished fenced-code block; allow older stored Done messages with an unclosed fence to be continued too.
