@@ -909,6 +909,53 @@ function rollContextMessages(original,profile,{keepRecentTurns=2}={}){
     exceedsBudget:sumTokens(result)>budget
   }};
 }
+// Model-generated continuations can jump back to earlier HTML instead of
+// following the actual code cursor. Catch obvious boundary corruption before
+// accepting a completion; text overlap alone is not proof of continuity.
+function continuationBoundaryIssue(previous,generated){
+  const before=String(previous||''),raw=String(generated||'');
+  if(!raw.trim())return null;
+  const fence=unclosedCodeFence(before);
+  if(!fence)return null;
+  let first=raw.trimStart();
+  const opener=/^(\x60{3,}|~{3,})[^\r\n]*\r?\n/.exec(first);
+  if(opener&&opener[1][0]===fence.marker)first=first.slice(opener[0].length).trimStart();
+  const startHtml=/(?:^|\n)\s*<(?:!doctype\s+html|html\b|head\b|body\b)/i;
+  if(startHtml.test(first.slice(0,500))&&/<html\b/i.test(before))
+    return 'Model restarted an earlier HTML section instead of continuing.';
+  if(/^(?:html|htm)$/i.test(fence.language||'')){
+    const openScript=Math.max(...[...before.matchAll(/<script\b[^>]*>/gi)].map(m=>m.index),-1);
+    const closeScript=Math.max(...[...before.matchAll(/<\/script\s*>/gi)].map(m=>m.index),-1);
+    const openStyle=Math.max(...[...before.matchAll(/<style\b[^>]*>/gi)].map(m=>m.index),-1);
+    const closeStyle=Math.max(...[...before.matchAll(/<\/style\s*>/gi)].map(m=>m.index),-1);
+    if(openScript>closeScript&&/^\s*<(?:button|div|section|header|footer|input|label|p|span|canvas|body|html)\b/i.test(first))
+      return 'Model emitted HTML elements inside an unfinished JavaScript block.';
+    if(openStyle>closeStyle&&/^\s*<(?:div|button|section|html|body)\b/i.test(first))
+      return 'Model emitted HTML elements inside an unfinished CSS block.';
+  }
+  return null;
+}
+// This only compiles ordinary inline scripts; it never executes generated code.
+// It is a safety check for completed whole-HTML code fences, not a full HTML,
+// CSS, runtime, or semantic validator.
+function generatedHtmlSyntaxIssue(value){
+  const markdown=String(value||'');
+  const found=[...markdown.matchAll(/\x60{3,}(?:html|htm)\s*\r?\n([\s\S]*?)\r?\n\x60{3,}/gi)];
+  if(!found.length)return null;
+  const html=found[found.length-1][1];
+  if(!/<html\b/i.test(html))return null;
+  if(!/<\/html\s*>/i.test(html))return 'Generated HTML lacks its closing html tag.';
+  const open=[...html.matchAll(/<script\b([^>]*)>/gi)];
+  const scripts=[...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)];
+  if(open.length!==scripts.length)return 'Generated HTML contains an unclosed script block.';
+  for(const match of scripts){
+    const attributes=match[1]||'';
+    if(/\bsrc\s*=|\btype\s*=\s*['"]?(?:module|application\/json)/i.test(attributes))continue;
+    try{new Function(match[2]);}
+    catch(error){return 'Generated JavaScript syntax error: '+String(error.message||error).slice(0,180);}
+  }
+  return null;
+}
 function apiMessages(thread, systemPrompt) {
   const history=[];
   if(systemPrompt.trim()) history.push({role:'system',content:systemPrompt.trim()});
