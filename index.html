@@ -1054,9 +1054,12 @@ function continuationBoundaryIssue(previous,generated){
 function generatedHtmlSyntaxIssue(value){
   const markdown=String(value||'');
   const found=[...markdown.matchAll(/\x60{3,}(?:html|htm)\s*\r?\n([\s\S]*?)\r?\n\x60{3,}/gi)];
-  if(!found.length)return null;
-  const html=found[found.length-1][1];
-  if(!/<html\b/i.test(html))return null;
+  // Accept raw documents as well as Markdown HTML fences. Raw HTML must not
+  // silently bypass syntactic validation.
+  const html=found.length?found[found.length-1][1]:
+    /^\s*(?:<!doctype\s+html\b[^>]*>\s*)?<html\b/i.test(markdown)
+      ?markdown.trim():null;
+  if(!html||!/<html\b/i.test(html))return null;
   if(!/<\/html\s*>/i.test(html))return 'Generated HTML lacks its closing html tag.';
   const open=[...html.matchAll(/<script\b([^>]*)>/gi)];
   const scripts=[...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)];
