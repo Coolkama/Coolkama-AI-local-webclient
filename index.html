@@ -630,6 +630,31 @@ function mergeSources(existing,incoming) {
   const all=normalizeSources([...(existing||[]),...(incoming||[])]),seen=new Set();
   return all.filter(x=>{const key=canonicalEvidenceUrl(x.url);if(seen.has(key))return false;seen.add(key);return true;});
 }
+function parseTextualWebCalls(value) {
+  const raw=String(value||'').trim();
+  if(!raw.includes('<dots_function_call>'))return null;
+  if(raw.length>14000)return {error:'Textual tool request exceeded the size limit.'};
+  const outer=/<dots_function_call>\s*<invoke name="web_search">([\s\S]*?)<\/invoke>\s*<\/dots_function_call>/g;
+  const blocks=[...raw.matchAll(outer)];
+  if(!blocks.length||raw.replace(outer,'').trim())
+    return {error:'The model produced unsupported textual tool markup.'};
+  const calls=[];
+  for(const block of blocks){
+    const params={},inner=block[1];
+    const matcher=/<parameter name="(query|time_range)">([\s\S]*?)<\/parameter>/g;
+    const fields=[...inner.matchAll(matcher)];
+    if(!fields.length||inner.replace(matcher,'').trim())
+      return {error:'The model supplied malformed textual tool arguments.'};
+    for(const field of fields){
+      if(params[field[1]]!==undefined)return {error:'Duplicate textual search argument.'};
+      params[field[1]]=field[2].trim();
+    }
+    const call={id:'web-text-'+uid(),type:'function',function:{name:'web_search',arguments:JSON.stringify(params)}};
+    try{toolSearchRequest(call,'');}catch(e){return {error:e.message||String(e)};}
+    calls.push(call);
+  }
+  return {calls};
+}
 function sourceOnlyAnswer(sources,reason) {
   const links=(sources||[]).slice(0,10).map((source,i)=>{
     const title=String(source.title||'Source').replace(/[\[\]()\r\n]/g,' ').slice(0,160);
