@@ -67,3 +67,11 @@ Suggested manual tests with Web enabled: ask for recent black-hole research, tod
 - Retrieved source titles, URLs and excerpts are passed back as untrusted evidence with subsequent conversation turns, allowing follow-ups such as **Summarise the information** to use already-fetched sources without immediately consuming another search credit.
 - Before executing a model-requested Tavily search, the client checks that a free LLM continuation request remains available. Otherwise it presents the existing sources and does not waste a Tavily credit.
 - No model pinning, hosted search, paid fallbacks or quota increases were introduced. Full Trace logs record recognised textual tool attempts and quota stops.
+
+## Groq invalid-tool-call recovery
+
+Groq-hosted tool-capable models may sometimes generate invalid function arguments after receiving valid web search results (for example, treating `web_search` as if it could open a result by `index`). Groq validates the tool schema and may report `tool_use_failed` inside an **HTTP 200 streaming response**. This is model-generated invalid tool use detected by Groq, not a Tavily failure.
+
+When this happens **after sources have already been retrieved**, the workbench attempts **at most one** additional Groq inference request with `tool_choice: "none"`, asking the model to answer from those existing results. It first checks the local free-tier inference cap and spends **no additional Tavily search credits**. If the recovery fails, is blocked by the cap, or yields another tool call, the answer is marked incomplete and the retrieved source links remain available.
+
+The workbench does not silently switch to a paid model, Groq hosted browser search, or another provider. OpenRouter's deliberately rotating Any Free Model option remains unaffected. These paths are recorded in Full Trace diagnostics.
