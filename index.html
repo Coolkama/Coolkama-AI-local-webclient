@@ -409,7 +409,7 @@ async function streamChat({provider, profile, temperature, messages, signal, onT
   if(toolsEnabled) {
     payload.tools=WEB_SEARCH_TOOLS;
     payload.tool_choice='auto';
-    payload.parallel_tool_calls=false;
+    if(provider==='openrouter'||provider==='groq')payload.parallel_tool_calls=false;
   }
   // Only the browser-owned function schema is allowed. No billable hosted tools or plugins.
   const res=await fetch(endpointUrl(profile.url),{
@@ -581,6 +581,7 @@ function Settings({value,onChange,onClose}) {
           const prices=m.pricing;
           if(!prices||!Object.prototype.hasOwnProperty.call(prices,'prompt')||!Object.prototype.hasOwnProperty.call(prices,'completion'))return null;
           if(Object.values(prices).some(v=>v===null||v===undefined||!Number.isFinite(Number(v))||Number(v)!==0))return null;
+          if(value.search.enabled&&(!Array.isArray(m.supported_parameters)||!m.supported_parameters.includes('tools')))return null;
         }
         return id;
       }).filter(Boolean);
@@ -614,7 +615,7 @@ function Settings({value,onChange,onClose}) {
             {[...new Set([...discovered,...(isApprovedModel(provider,profile.model)?[profile.model]:[])])].filter(id=>isApprovedModel(provider,id)&&!info.models.some(([known])=>known===id)).map(id=><option key={id} value={id}>{id} · free</option>)}
           </select>
           {provider==='ollama'&&<input className="field font-mono text-xs" spellCheck="false" value={profile.model} onChange={e=>patchProfile({model:e.target.value})} placeholder="Locally installed Ollama model name"/>}
-          <p className="text-[11px] text-emerald-300 leading-5">Custom paid model IDs are disabled. OpenRouter discovery requires zero input/output pricing plus a <code>:free</code> variant; Groq/Gemini discovery uses free-tier allowlists; Ollama models run locally.</p>
+          <p className="text-[11px] text-emerald-300 leading-5">Custom paid model IDs are disabled. OpenRouter discovery requires zero pricing and a <code>:free</code> variant; with Web enabled it also requires advertised tool support. Groq/Gemini discovery uses free-tier allowlists; Ollama models run locally.</p>
           {modelError&&<p className="text-xs text-amber-300 mt-1">{modelError}</p>}
         </div>
         <div className="quota-card space-y-2"><div className="flex flex-wrap justify-between items-center gap-2"><strong className="text-xs text-emerald-300">Free plan limits &amp; local safety counters</strong><a className="text-xs underline text-indigo-300" href={FREE_LINKS[provider]||FREE_LINKS.openrouter} target="_blank" rel="noopener noreferrer">{FREE_LINKS[provider]?'Official limits ↗':'View free limits ↗'}</a></div>
@@ -630,7 +631,7 @@ function Settings({value,onChange,onClose}) {
           <div><label className="block text-xs font-semibold text-slate-300 mb-2">Sources returned per tool call</label><select className="field" value={value.search.maxResults} onChange={e=>patchSearch({maxResults:Number(e.target.value)})}>{[2,3,4,5,8,10].map(n=><option key={n} value={n}>{n} sources</option>)}</select></div>
           <div><label className="block text-xs font-semibold text-slate-300 mb-2">Maximum web searches per message (each uses 1 Tavily credit)</label><select className="field" value={searchBudget(value)} onChange={e=>patchSearch({maxToolSearches:Number(e.target.value)})}>{[1,2,3].map(n=><option key={n} value={n}>{n} search{n>1?'es':''} maximum</option>)}</select><p className="text-[11px] text-slate-400 mt-1">The model decides when to search and may make fewer calls. Each tool round trip also uses another free LLM request. No automatic paid fallback.</p></div>
           <Quota provider="tavily"/>
-          <p className="text-[11px] text-amber-200 leading-5">{FREE_DETAILS.tavily} The AI selects search queries from the conversation using function calling. Some free models do not support tools; select a tool-capable model if your provider rejects the request. No chargeable search plugins or paid fallback.</p>
+          <p className="text-[11px] text-amber-200 leading-5">{FREE_DETAILS.tavily} The AI selects search queries from the conversation using function calling. <strong>Search queries are sent to Tavily and may contain details from your conversation.</strong> Some free models do not support tools; select a tool-capable model if your provider rejects the request. No chargeable search plugins or paid fallback.</p>
         </div>
         <div><div className="flex justify-between mb-2"><label className="text-xs font-semibold text-slate-300">Temperature</label><span className="text-xs text-indigo-300 font-mono">{Number(value.temperature).toFixed(2)}</span></div><input type="range" min="0" max="2" step="0.05" className="w-full accent-indigo-500" value={value.temperature} onChange={e=>patch({temperature:Number(e.target.value)})}/></div>
         <div><label className="block text-xs font-semibold text-slate-300 mb-2">System instruction</label><textarea className="field min-h-24" value={value.systemPrompt} onChange={e=>patch({systemPrompt:e.target.value})}/></div>
