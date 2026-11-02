@@ -60,6 +60,13 @@ When adding file features, prefer the browser File API for explicit selection an
 - Replace the text-heavy Web toggle above the composer with a compact, labelled, accessible globe icon immediately next to the file-attachment button, with clearly distinguishable on/off states.
 - Preserve free-only guards, provider rotation, model tool support, diagnostics and other product boundaries.
 
+## Groq follow-up tool validation
+
+- A Groq model may emit invalid local tool arguments after a valid search; the API may then send a `tool_use_failed` error as a streaming event with initial HTTP 200. Preserve the error code in diagnostics.
+- If already-retrieved sources exist and a Groq inference round fails specifically due to tool validation, allow **one** extra free-capped model request with tools explicitly disabled (`tool_choice: "none"`) and a final-answer instruction. Do not search again.
+- Check the local LLM cap **before** the recovery request. On quota failure, malformed or tool-only output, or repeated provider failure, leave sources accessible and mark the answer incomplete.
+- Do not alter OpenRouter Any Free Model rotation or introduce paid hosted tools and external services.
+
 ## Rotating-model web-tool interoperability
 
 - Preserve OpenRouter's Any Free Model rotation even between function-calling rounds.
