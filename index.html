@@ -735,6 +735,38 @@ function sourceOnlyAnswer(sources,reason) {
     '\n\nNo further searches were sent.'+
     (links?'\n\n**Retrieved sources (not a generated summary):**\n\n'+links:'');
 }
+// Continuation preserves the original Markdown/code fence. It is a new model
+// request, but NOT a new user or assistant chat message.
+const MAX_MANUAL_CONTINUATIONS = 6;
+function unclosedCodeFence(markdown){
+  let opened=null;
+  for(const line of String(markdown||'').split(/\r?\n/)){
+    const match=/^[ \t]{0,3}(\x60{3,}|~{3,})([^\r\n]*)$/.exec(line);
+    if(!match)continue;
+    if(!opened){
+      opened={marker:match[1][0],length:match[1].length,language:match[2].trim().split(/\s+/)[0]};
+    }else if(match[1][0]===opened.marker&&match[1].length>=opened.length&&!match[2].trim()){
+      opened=null;
+    }
+  }
+  return opened;
+}
+function mergeContinuedText(original,generated){
+  const base=String(original||'');
+  let tail=String(generated||'');
+  const fence=unclosedCodeFence(base);
+  if(fence){
+    // Drop only an opening language-labelled fence, never the bare closing fence.
+    const extraOpen=/^[ \t\r\n]*(\x60{3,}|~{3,})([a-zA-Z][\w.+#-]*)[ \t]*\r?\n/.exec(tail);
+    if(extraOpen&&extraOpen[1][0]===fence.marker)tail=tail.slice(extraOpen[0].length);
+  }
+  // Remove a short repeated suffix at the boundary, not arbitrary similar code.
+  const maximum=Math.min(400,base.length,tail.length);
+  for(let n=maximum;n>=6;n--){
+    if(base.endsWith(tail.slice(0,n)))return base+tail.slice(n);
+  }
+  return base+tail;
+}
 function apiMessages(thread, systemPrompt) {
   const history=[];
   if(systemPrompt.trim()) history.push({role:'system',content:systemPrompt.trim()});
