@@ -630,6 +630,15 @@ function mergeSources(existing,incoming) {
   const all=normalizeSources([...(existing||[]),...(incoming||[])]),seen=new Set();
   return all.filter(x=>{const key=canonicalEvidenceUrl(x.url);if(seen.has(key))return false;seen.add(key);return true;});
 }
+function sourceOnlyAnswer(sources,reason) {
+  const links=(sources||[]).slice(0,10).map((source,i)=>{
+    const title=String(source.title||'Source').replace(/[\[\]()\r\n]/g,' ').slice(0,160);
+    return '- '+(i+1)+'. ['+title+']('+source.url+')';
+  }).join('\n');
+  return '**The model did not finish its answer.** '+reason+
+    '\n\nNo further searches were sent.'+
+    (links?'\n\n**Retrieved sources (not a generated summary):**\n\n'+links:'');
+}
 function apiMessages(thread, systemPrompt) {
   const history=[];
   if(systemPrompt.trim()) history.push({role:'system',content:systemPrompt.trim()});
@@ -1146,6 +1155,14 @@ function App() {
             break;
           }
           if(!canSearch)throw new Error('Model requested web search after the search budget was exhausted.');
+          if(LOCAL_CAPS[provider]){
+            try{checkCap(provider);}
+            catch(e){
+              output=sourceOnlyAnswer(allSources,'The free model requested another search, but the local LLM request allowance cannot fund the required continuation.');
+              diagLog('normal','search-blocked-before-tavily',{reason:e.message||String(e),alreadyRetrieved:allSources.length},roundCtx);
+              paint();answered=true;break;
+            }
+          }
           output='';paint();
           const calls=response.toolCalls;
           if(calls.some(c=>!c.id||c.type!=='function'))throw new Error('Model returned incomplete tool-call IDs. Select another tool-capable free model.');
