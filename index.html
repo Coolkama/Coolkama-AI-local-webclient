@@ -567,7 +567,7 @@ function normalizeSources(items) {
     seen.add(url);
     const rawDate=entry.published_date||entry.publishedDate||entry.date;
     const publishedDate=typeof rawDate==='string'&&/^\d{4}-\d{2}-\d{2}/.test(rawDate)?rawDate.slice(0,10):null;
-    return {url,title:String(entry.title||new URL(url).hostname).slice(0,180),content:String(entry.content||entry.snippet||'').slice(0,2200),...(publishedDate?{publishedDate}:{})};
+    return {url,title:String(entry.title||new URL(url).hostname).slice(0,180),content:String(entry.content||entry.snippet||'').slice(0,2200),...(publishedDate?{publishedDate}:{}),...(entry.openedContent?{openedContent:String(entry.openedContent).slice(0,MAX_PERSISTED_OPEN_TEXT)}:{})};
   }).filter(Boolean);
 }
 async function tavilySearch(query,key,count,signal,trace={},timeRange=null) {
@@ -596,7 +596,40 @@ async function tavilySearch(query,key,count,signal,trace={},timeRange=null) {
   if(!sources.length) throw new Error('The web search returned no usable sources. Try a different query.');
   return sources;
 }
+async function tavilyExtract(url,key,signal,trace={}) {
+  const started=performance.now();
+  const body={urls:[url],extract_depth:'basic',include_images:false,format:'markdown'};
+  diagLog('normal','extract-request',{tool:'web_open',depth:'basic',url},trace);
+  diagLog('full','tavily-extract-request-payload',{url:'https://api.tavily.com/extract',body},trace);
+  const response=await fetch('https://api.tavily.com/extract',{
+    method:'POST',signal,headers:{'Content-Type':'application/json',Authorization:'Bearer '+key.trim()},
+    body:JSON.stringify(body)
+  });
+  diagLog('normal','extract-http',{status:response.status,elapsedMs:Math.round(performance.now()-started)},trace);
+  if(!response.ok){
+    const errorBody=await response.text();
+    let reason=errorBody.slice(0,350);
+    try {const parsed=JSON.parse(errorBody);reason=parsed.message||parsed.detail||reason;} catch {}
+    throw new Error('Web page extraction failed ('+response.status+'): '+String(reason).slice(0,350));
+  }
+  const responseBody=await response.json();
+  diagLog('full','tavily-extract-raw-response',{response:responseBody},trace);
+  const result=(responseBody.results||[]).find(r=>canonicalEvidenceUrl(r.url)===canonicalEvidenceUrl(url));
+  const text=typeof result?.raw_content==='string'?result.raw_content.trim():'';
+  if(!text){
+    const failure=(responseBody.failed_results||[]).find(r=>canonicalEvidenceUrl(r.url)===canonicalEvidenceUrl(url));
+    const reason=String(failure?.error||'Tavily returned no extracted page text').slice(0,350);
+    diagLog('normal','extract-no-content',{url,reason},trace);
+    throw new Error(reason);
+  }
+  diagLog('normal','extract-success',{url,totalChars:text.length,returnedChars:Math.min(text.length,MAX_OPEN_TEXT),elapsedMs:Math.round(performance.now()-started)},trace);
+  diagLog('detailed','extract-preview',{url,preview:text.slice(0,1200)},trace);
+  return {url,content:text.slice(0,MAX_OPEN_TEXT),totalChars:text.length,truncated:text.length>MAX_OPEN_TEXT};
+}
 const MAX_TOOL_SEARCHES = 3;
+const MAX_TOOL_OPENS = 3;
+const MAX_OPEN_TEXT = 18000;
+const MAX_PERSISTED_OPEN_TEXT = 12000;
 const WEB_SEARCH_TOOLS = [{
   type:'function',
   function:{
@@ -608,6 +641,15 @@ const WEB_SEARCH_TOOLS = [{
       required:['query'],
       additionalProperties:false
     }
+  }
+},{
+  type:'function',
+  function:{
+    name:'web_open',
+    description:'Open and read one of the web_search results from the current user turn. Use this when a short search snippet is insufficient, especially for research papers and official venue pages. Pass its 1-based result index from the latest global search result list; do not pass a URL or use web_search with index. This uses Tavily Basic Extract, limited to a few pages and conservatively counted against free credits. Dynamic or protected pages may not expose the requested data.',
+    parameters:{type:'object',
+      properties:{index:{type:'integer',minimum:1,description:'1-based source number [n] returned by web_search in this user turn.'}},
+      required:['index'],additionalProperties:false}
   }
 }];
 function searchBudget(settings) {
@@ -626,6 +668,22 @@ function toolSearchRequest(toolCall,userText) {
   return {query,timeRange:explicit||defaultSearchTimeRange(userText)};
 }
 function toolSearchQuery(call){return toolSearchRequest(call,'').query;}
+function toolOpenRequest(toolCall,sources){
+  if(toolCall.function?.name!=='web_open')throw new Error('Unsupported tool. Only web_search and web_open are available.');
+  let args;
+  try{args=JSON.parse(toolCall.function?.arguments||'{}');}
+  catch{throw new Error('Model returned invalid web_open JSON arguments.');}
+  if(!args||!Number.isInteger(args.index)||Object.keys(args).length!==1)
+    throw new Error('web_open requires one integer index from search results.');
+  if(args.index<1||args.index>sources.length)
+    throw new Error('web_open index '+args.index+' is not an available search result in this turn.');
+  const source=sources[args.index-1];
+  const url=safeWebUrl(source.url);
+  if(!url||!['http:','https:'].includes(new URL(url).protocol))
+    throw new Error('web_open result URL is invalid.');
+  return {index:args.index,url,source};
+}
+
 function mergeSources(existing,incoming) {
   const all=normalizeSources([...(existing||[]),...(incoming||[])]),seen=new Set();
   return all.filter(x=>{const key=canonicalEvidenceUrl(x.url);if(seen.has(key))return false;seen.add(key);return true;});
