@@ -60,6 +60,14 @@ When adding file features, prefer the browser File API for explicit selection an
 - Replace the text-heavy Web toggle above the composer with a compact, labelled, accessible globe icon immediately next to the file-attachment button, with clearly distinguishable on/off states.
 - Preserve free-only guards, provider rotation, model tool support, diagnostics and other product boundaries.
 
+## In-place output continuation
+
+- Offer a **Continue writing** action on the latest assistant reply when it ends at the output limit or with a visibly unfinished fenced-code block; allow older stored Done messages with an unclosed fence to be continued too.
+- One press sends **one separately counted, free-tier-checked model request**; no automatic retry and no Tavily tools. Preserve the same existing assistant message and ID, append streaming text into its content and avoid a separate user/chat message.
+- Put the original incomplete answer at the end of model context, following any stored source excerpts, and instruct the model to supply only the missing suffix. Do not reopen code fences or repeat text; trim common duplicated fence starts and short overlaps safely, without pretending arbitrary model-generated code is always syntactically valid.
+- Treat a repeated output limit, unfinished fence, cancellation or provider failure as incomplete, preserve all available partial text and allow another manual continuation. Cap at six presses per answer and do not continue earlier replies after the conversation has progressed.
+- Keep the existing free-tier local caps, provider selection and intentional OpenRouter free-model rotation. Record continuation starts/completions/failures in diagnostics.
+
 ## Output length and code completion
 
 - Surface any provider `finish_reason: "length"` or equivalent as an **incomplete** response, never success. Preserve the partial text for recovery, and log the output cap and token usage.
