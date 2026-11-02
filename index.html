@@ -692,23 +692,31 @@ function parseTextualWebCalls(value) {
   const raw=String(value||'').trim();
   if(!raw.includes('<dots_function_call>'))return null;
   if(raw.length>14000)return {error:'Textual tool request exceeded the size limit.'};
-  const outer=/<dots_function_call>\s*<invoke name="web_search">([\s\S]*?)<\/invoke>\s*<\/dots_function_call>/g;
+  const outer=/<dots_function_call>\s*<invoke name="(web_search|web_open)">([\s\S]*?)<\/invoke>\s*<\/dots_function_call>/g;
   const blocks=[...raw.matchAll(outer)];
   if(!blocks.length||raw.replace(outer,'').trim())
     return {error:'The model produced unsupported textual tool markup.'};
   const calls=[];
   for(const block of blocks){
-    const params={},inner=block[1];
-    const matcher=/<parameter name="(query|time_range)">([\s\S]*?)<\/parameter>/g;
+    const name=block[1],params={},inner=block[2];
+    const matcher=/<parameter name="(query|time_range|index)">([\s\S]*?)<\/parameter>/g;
     const fields=[...inner.matchAll(matcher)];
     if(!fields.length||inner.replace(matcher,'').trim())
       return {error:'The model supplied malformed textual tool arguments.'};
     for(const field of fields){
-      if(params[field[1]]!==undefined)return {error:'Duplicate textual search argument.'};
+      if(Object.hasOwn(params,field[1]))return {error:'Duplicate textual tool argument.'};
       params[field[1]]=field[2].trim();
     }
-    const call={id:'web-text-'+uid(),type:'function',function:{name:'web_search',arguments:JSON.stringify(params)}};
-    try{toolSearchRequest(call,'');}catch(e){return {error:e.message||String(e)};}
+    if(name==='web_open'){
+      if(!/^[1-9]\d*$/.test(params.index||'')||Object.keys(params).length!==1)
+        return {error:'Textual web_open requires one positive result index.'};
+      params.index=Number(params.index);
+      if(!Number.isSafeInteger(params.index))return {error:'Invalid web_open index.'};
+    }
+    const call={id:'web-text-'+uid(),type:'function',function:{name,arguments:JSON.stringify(params)}};
+    if(name==='web_search'){
+      try{toolSearchRequest(call,'');}catch(e){return {error:e.message||String(e)};}
+    }
     calls.push(call);
   }
   return {calls};
