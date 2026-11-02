@@ -1200,7 +1200,38 @@ function App() {
             token(pendingText);
             pendingText='';
           };
-          const response=await streamChat({provider,profile:config,temperature:settings.temperature,messages:requestMessages,signal:controller.signal,onToken:roundToken,onSources:addSources,toolsEnabled:canSearch,trace:roundCtx});
+          let response;
+          try {
+            response=await streamChat({provider,profile:config,temperature:settings.temperature,messages:requestMessages,signal:controller.signal,onToken:roundToken,onSources:addSources,toolsEnabled:canSearch,trace:roundCtx});
+          }catch(error){
+            const failedToolValidation=provider==='groq'&&allSources.length>0&&messages.some(m=>m.role==='tool')&&
+              (error.code==='tool_use_failed'||/tool call validation failed/i.test(error.message||''));
+            if(!failedToolValidation)throw error;
+            diagLog('normal','groq-tool-validation-recovery',{failedRound:round,reason:error.message,sources:allSources.length},roundCtx);
+            try{checkCap(provider);}
+            catch(limitError){
+              output=sourceOnlyAnswer(allSources,'Groq rejected an invalid model-generated tool call, and the free request allowance cannot fund a text-only recovery.');
+              diagLog('normal','groq-recovery-blocked',{reason:limitError.message},roundCtx);
+              paint();incomplete=true;answered=true;break;
+            }
+            reserveFreeUse(provider);setUsageRevision(v=>v+1);
+            status('Groq rejected a tool call · finishing with retrieved evidence…');
+            output='';paint();
+            const recoveryMessages=[{role:'system',content:'Answer the latest user request using only the already returned web_search results. This is a final, text-only response. Do not call any tool, request additional results, emit tool markup, or fabricate URLs. Cite the known source IDs and distinguish limited or noisy excerpts.'},...requestMessages];
+            try{
+              response=await streamChat({provider,profile:config,temperature:Math.min(Number(settings.temperature)||0.7,0.3),messages:recoveryMessages,signal:controller.signal,onToken:roundToken,onSources:addSources,toolsEnabled:false,finalOnly:true,trace:{...roundCtx,recovery:true}});
+              if(response.toolCalls.length||!response.content.trim()||response.content.includes('<dots_function_call>')){
+                output=sourceOnlyAnswer(allSources,'Groq did not provide a valid text-only response after tool-call validation failed.');
+                paint();incomplete=true;answered=true;break;
+              }
+              diagLog('normal','groq-recovery-success',{sourceCount:allSources.length,answerChars:response.content.length},roundCtx);
+            }catch(recoveryError){
+              if(recoveryError.name==='AbortError')throw recoveryError;
+              diagLog('normal','groq-recovery-failed',{message:recoveryError.message||String(recoveryError)},roundCtx);
+              output=sourceOnlyAnswer(allSources,'Groq could not complete a final answer from the retrieved results.');
+              paint();incomplete=true;answered=true;break;
+            }
+          }
           if(!decidedText&&!suppressedTextTool&&pendingText)token(pendingText);
           const textual=(!response.toolCalls.length&&response.content.includes('<dots_function_call>'))
             ?parseTextualWebCalls(response.content):null;
