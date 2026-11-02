@@ -1,12 +1,12 @@
 # Project scope and guardrails
 
-**Project:** Coolkama AI Local Web Client  
+**Project:** Tight Arse AI (repository: `Coolkama/Coolkama-AI-local-webclient`)  
 **Agreed:** 2 November 2026  
 **Status:** Product requirements — use when proposing or implementing features
 
 ## Purpose and project boundary
 
-This is an **independent, mobile-friendly, browser-based LLM workbench and chat client**. Despite the "Coolkama AI" name, it is **not** part of the separate PC-hosted Coolkama AI ecosystem. Do not merge their architectures, roadmaps, assumptions or requirements.
+This is an **independent, mobile-friendly, browser-based LLM workbench and chat client**. The GitHub repository retains its original Coolkama name, but the product is **Tight Arse AI** and it is **not** part of the separate PC-hosted Coolkama AI ecosystem. Do not merge their architectures, roadmaps, assumptions or requirements.
 
 The application should be deployable as a **static webpage**, in the same general manner as Sciwrix: the website serves the application, and the browser performs its client-side work. It must not require a custom server, desktop companion, build service or local agent to operate.
 
@@ -64,7 +64,7 @@ When adding file features, prefer the browser File API for explicit selection an
 
 - Construct a rolling **model request** on every inference round from the full locally retained conversation; do not delete or rewrite historical UI messages. Do not spend extra inference calls on summarisation.
 - Preserve system messages/current date, the latest two conversational turns and paired assistant tool calls/tool results. Older complete turns can fall outside the window. If recent required content exceeds the selected budget, visibly mark abbreviated excerpts; retain tool-call IDs and tool-result shape.
-- Expose an estimated per-provider input budget (2,048–65,536 tokens), with Groq default 3,072 to reduce its free-tier token-per-minute pressure, other providers 8,192. Keep maximum **output** tokens as a separate setting. Clearly state that text/vision token estimates are not a model-specific tokenizer or a guarantee against provider 429 or context-length errors.
+- Expose an estimated per-provider input budget (2,048–65,536 tokens), with Groq default 3,072 to reduce its free-tier token-per-minute pressure, other providers 8,192. Keep optional manual **output** tokens as a separate setting; Automatic must omit the provider `max_tokens` argument. Clearly state that text/vision token estimates are not a model-specific tokenizer or a guarantee against provider 429 or context-length errors.
 - Reapply rolling selection for each new provider request, including model-requested web tools, recovery and manual answer continuation. Always preserve original source evidence in browser storage, with relevant URLs still accessible in the UI.
 - Log window estimates, dropped complete turns, shortened excerpts and any unavoidable over-budget cases. Show a concise context disclosure beside the relevant assistant response.
 - Retain free-only caps, model selection including rotating OpenRouter free routing and static browser-only architecture.
@@ -88,8 +88,9 @@ When adding file features, prefer the browser File API for explicit selection an
 ## Output length and code completion
 
 - Surface any provider `finish_reason: "length"` or equivalent as an **incomplete** response, never success. Preserve the partial text for recovery, and log the output cap and token usage.
-- Allow users to set a conservative maximum output token allowance per provider profile, with Groq defaulting to 4,096 for longer code tasks while preserving other providers' 2,048 default. Never exceed 8,192 from an untrusted persisted value.
-- No automatic retries or paid fallbacks for lengthy generation; warn that higher caps can hit independent provider token-per-minute and model-specific limits.
+- **Default to Automatic** for every provider profile: omit `max_tokens` entirely and let the model/provider choose its per-request output allowance. Do not retain an artificial 2,048, 4,096 or 8,192-token cap in Automatic mode.
+- Permit an explicitly selected **Manual** positive integer output-token override with no arbitrary 8,192-token client ceiling; the provider still validates its own supported range. Migrate previously persisted profiles to Automatic by default while preserving their old numeric value for later Manual use.
+- Keep automatic in-place continuation, Groq's bounded 429 retry, per-provider conservative browser quotas and no paid fallback. Provider-chosen output lengths can still hit independent tokens-per-minute, output, context or free-tier limits.
 
 ## Model-controlled page extraction
 
