@@ -1175,7 +1175,27 @@ function App() {
           if(searchMode)status(canSearch?`AI thinking · ${searchesUsed}/${budget} web searches used…`:'Search budget reached · generating final response…');
           const requestMessages=[{role:'system',content:runtimeDateContext()},...messages];
           diagLog('normal','request-date-context',{dateUtc:new Date().toISOString(),browserTimeZone:Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC'},roundCtx);
-          const response=await streamChat({provider,profile:config,temperature:settings.temperature,messages:requestMessages,signal:controller.signal,onToken:token,onSources:addSources,toolsEnabled:canSearch,trace:roundCtx});
+          // Buffer the first few streamed characters. Some free models print
+          // textual tool envelopes rather than structured tool calls. Do not
+          // flash that markup in the assistant answer while it is streaming.
+          let pendingText='',suppressedTextTool=false,decidedText=false;
+          const roundToken=t=>{
+            if(suppressedTextTool)return;
+            if(decidedText){token(t);return;}
+            pendingText+=t;
+            const leading=pendingText.trimStart(),marker='<dots_function_call>';
+            if(!leading||marker.startsWith(leading))return;
+            if(leading.startsWith(marker)){
+              suppressedTextTool=true;
+              status('AI supplied a textual web tool request…');
+              return;
+            }
+            decidedText=true;
+            token(pendingText);
+            pendingText='';
+          };
+          const response=await streamChat({provider,profile:config,temperature:settings.temperature,messages:requestMessages,signal:controller.signal,onToken:roundToken,onSources:addSources,toolsEnabled:canSearch,trace:roundCtx});
+          if(!decidedText&&!suppressedTextTool&&pendingText)token(pendingText);
           const textual=(!response.toolCalls.length&&response.content.includes('<dots_function_call>'))
             ?parseTextualWebCalls(response.content):null;
           if(textual)diagLog('normal','textual-tool-response',{
