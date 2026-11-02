@@ -383,7 +383,12 @@ const PROVIDERS = {
     models: [['offline-demo','Offline streaming simulator']]
   }
 };
-const freshProfiles = () => Object.fromEntries(Object.entries(PROVIDERS).map(([id,p]) => [id, { key:'', url:p.url, model:p.model }]));
+const freshProfiles = () => Object.fromEntries(Object.entries(PROVIDERS).map(([id,p]) => [id, { key:'', url:p.url, model:p.model, maxTokens:id==='groq'?4096:2048 }]));
+const MAX_OUTPUT_TOKENS = 8192;
+function outputTokenLimit(profile){
+  const value=Number(profile?.maxTokens);
+  return Number.isFinite(value)?Math.max(512,Math.min(MAX_OUTPUT_TOKENS,Math.trunc(value))):2048;
+}
 const defaultSearch = () => ({ enabled:false, mode:'tavily', tavilyKey:'', maxResults:4, maxToolSearches:3, tavilyFreeConfirmed:false });
 const defaults = () => ({ provider:'openrouter', temperature:0.7, systemPrompt:'You are a helpful, accurate assistant. Format code using fenced Markdown code blocks with language identifiers.', profiles:freshProfiles(), search:defaultSearch(), freeTierConfirmed:{openrouter:false,groq:false,gemini:false} });
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
@@ -769,12 +774,13 @@ function endpointUrl(base) {
 }
 async function streamChat({provider, profile, temperature, messages, signal, onToken, onSources, toolsEnabled=false, toolDefinitions=WEB_SEARCH_TOOLS, finalOnly=false, trace={}}) {
   const began=performance.now();let firstTokenMs=null,chunkCount=0,sseEvents=0,actualModel=null,usage=null;
-  diagLog('normal','llm-request',{provider,requestedModel:profile.model,round:trace.round,toolsEnabled,finalOnly,messages:messages.length,maxTokens:2048},trace);
+  const maxTokens=outputTokenLimit(profile);
+  diagLog('normal','llm-request',{provider,requestedModel:profile.model,round:trace.round,toolsEnabled,finalOnly,messages:messages.length,maxTokens},trace);
   // Full request is logged below after the exact payload has been constructed.
   const headers={'Content-Type':'application/json'};
   if(provider !== 'ollama') headers.Authorization=`Bearer ${profile.key.trim()}`;
   if(provider==='openrouter') {headers['HTTP-Referer']=location.origin==='null'?'https://openrouter.ai':location.origin;headers['X-Title']='LLM Workbench';}
-  const payload={model:profile.model.trim(),messages,temperature:Number(temperature),stream:true,max_tokens:2048};
+  const payload={model:profile.model.trim(),messages,temperature:Number(temperature),stream:true,max_tokens:maxTokens};
   if(toolsEnabled||finalOnly) {
     payload.tools=toolDefinitions;
     payload.tool_choice=finalOnly?'none':'auto';
