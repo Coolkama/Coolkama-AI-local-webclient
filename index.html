@@ -813,9 +813,13 @@ function continuationAlignment(previous,generated,{final=false}={}){
   // Repetition from an EARLIER section must not be treated as a continuation.
   // Buffer while it might still reach the previous ending; reject if it
   // diverges or repeats too much without catching up.
-  const earlier=probe.length>=80&&searchArea.indexOf(probe)>=0;
+  const repeatProbe=candidate.slice(0,Math.min(candidate.length,80));
+  const structuralStart=/^\s*(?:function\s+[A-Za-z_$][\w$]*\s*\(|(?:const|let|class)\s+[A-Za-z_$][\w$]*|<\/?(?:body|html|head|script|style)\b)/i.test(candidate);
+  const enough=structuralStart?Math.min(30,candidate.length):80;
+  const check=candidate.slice(0,Math.min(candidate.length,structuralStart?30:80));
+  const earlier=check.length>=enough&&searchArea.indexOf(check)>=0;
   const isEntireOverlap=overlap===candidate.length;
-  const stillEarlier=earlier&&overlap<80;
+  const stillEarlier=earlier&&overlap<Math.min(80,check.length);
   if(!final&&candidate.length<12000&&(isEntireOverlap||stillEarlier))
     return {ready:false,content:base,overlap,issue:null};
   if(stillEarlier)
@@ -1048,6 +1052,11 @@ function generatedHtmlSyntaxIssue(value){
   const scripts=[...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)];
   if(open.length!==scripts.length)return 'Generated HTML contains an unclosed script block.';
   for(const match of scripts){
+    // Two implementations with the same named functions can parse but the
+    // later definition silently replaces the first. Flag clear duplicates.
+    const namedFunctions=[...match[2].matchAll(/(?:^|\n)[ \t]*function[ \t]+([A-Za-z_$][\w$]*)[ \t]*\(/g)].map(m=>m[1]);
+    const repeated=namedFunctions.find((name,index)=>namedFunctions.indexOf(name)!==index);
+    if(repeated)return 'Generated JavaScript contains duplicate function '+repeated+'().';
     const attributes=match[1]||'';
     if(/\bsrc\s*=|\btype\s*=\s*['"]?(?:module|application\/json)/i.test(attributes))continue;
     try{new Function(match[2]);}
@@ -1714,11 +1723,11 @@ function App() {
     }
     messages.push({role:'assistant',content:original,continuationTail:true});
     const fence=unclosedCodeFence(original);
-    const constraint='You are continuing your immediately preceding assistant response. '+
-      'Output ONLY the missing suffix of that response, starting directly after its last character. '+
-      'Do not repeat text, restart the answer, add an introduction, or create another code block. '+
-      'If the prior response ends within an open Markdown code fence, remain inside that same fence '+
-      'and close it exactly once after finishing the code. Do not use tools.';
+    const constraint='Continue your immediately preceding assistant response from its exact final character. '+
+      'Finish the last incomplete line or expression before generating the next statement. '+
+      'Output only the missing suffix. Never repeat code, redeclare earlier functions or variables, '+
+      'restart a section, introduce the answer or open another code block. '+
+      'Stay inside an existing Markdown code fence and close it once the code is complete. Do not use tools.';
     messages.unshift({role:'system',content:constraint});
     messages.unshift({role:'system',content:runtimeDateContext()});
     messages.push({role:'user',content:'Continue your immediately preceding answer, supplying only the next characters. '+
@@ -2018,10 +2027,10 @@ function App() {
         }
         if(settings.autoContinue!==false&&autoEligible&&output.trim()&&
             ['output_limit','unfinished_code'].includes(incompleteReason)){
-          const continueRule='You are continuing your immediately preceding assistant answer. '+
-            'Produce only the missing suffix, beginning directly after its final character. '+
-            'Do not repeat text, add introductions, restart code or reopen its Markdown code fence. '+
-            'Close an existing code fence once the code is complete. Do not invoke any tools.';
+          const continueRule='Continue your immediately preceding assistant answer from its exact final character. '+
+            'If the final line is an incomplete expression or statement, finish that very line first. '+
+            'Do not repeat code, redeclare functions or variables already written, restart sections, or add introductions. '+
+            'Do not reopen its Markdown code fence; close the existing fence once the code is complete. Do not invoke any tools.';
           while(autoRounds<MAX_AUTO_CONTINUATIONS){
             if(controller.signal.aborted)throw new DOMException('Stopped','AbortError');
             const previous=output;
