@@ -776,6 +776,86 @@ function mergeContinuedText(original,generated){
   }
   return base+tail;
 }
+// Exact suffix/prefix alignment. The model may repeat several thousand
+// characters; never trim a match found solely in the *middle* of prior code.
+function continuationOverlapLength(previous,following){
+  const base=String(previous||''),next=String(following||'');
+  const size=Math.min(12000,base.length,next.length);
+  if(!size)return 0;
+  const pattern=next.slice(0,size),text=base.slice(-12000);
+  const table=new Uint32Array(pattern.length);
+  for(let i=1,j=0;i<pattern.length;i++){
+    while(j&&pattern[i]!==pattern[j])j=table[j-1];
+    if(pattern[i]===pattern[j])j++;
+    table[i]=j;
+  }
+  let j=0;
+  for(let i=0;i<text.length;i++){
+    while(j&&text[i]!==pattern[j])j=table[j-1];
+    if(text[i]===pattern[j])j++;
+    if(j===pattern.length&&i!==text.length-1)j=table[j-1];
+  }
+  return j;
+}
+function continuationAlignment(previous,generated,{final=false}={}){
+  const base=String(previous||''),raw=String(generated||'');
+  let candidate=raw;
+  const fence=unclosedCodeFence(base);
+  if(fence){
+    const extraOpen=/^[ \t\r\n]*(\x60{3,}|~{3,})([a-zA-Z][\w.+#-]*)[ \t]*\r?\n/.exec(candidate);
+    if(extraOpen&&extraOpen[1][0]===fence.marker)
+      candidate=candidate.slice(extraOpen[0].length);
+  }
+  if(!candidate)return {ready:final,content:base,overlap:0,issue:final?'No continuation text received.':null};
+  const overlap=continuationOverlapLength(base,candidate);
+  const probe=candidate.slice(0,Math.min(160,candidate.length));
+  const searchArea=base.slice(-12000);
+  // Repetition from an EARLIER section must not be treated as a continuation.
+  // Buffer while it might still reach the previous ending; reject if it
+  // diverges or repeats too much without catching up.
+  const earlier=probe.length>=80&&searchArea.indexOf(probe)>=0;
+  const isEntireOverlap=overlap===candidate.length;
+  const stillEarlier=earlier&&overlap<80;
+  if(!final&&candidate.length<12000&&(isEntireOverlap||stillEarlier))
+    return {ready:false,content:base,overlap,issue:null};
+  if(stillEarlier)
+    return {ready:true,content:base,overlap,issue:'Continuation restarted an earlier section rather than reaching the previous end.'};
+  const rest=candidate.slice(overlap);
+  const issue=continuationBoundaryIssue(base,rest);
+  if(issue)return {ready:true,content:base,overlap,issue};
+  if(!final&&candidate.length<600)return {ready:false,content:base,overlap,issue:null};
+  return {ready:true,content:base+rest,overlap,issue:null,prefixChars:raw.length-candidate.length};
+}
+function createContinuationJoiner(previous,onChange){
+  const base=String(previous||'');
+  let received='',settled=null,latest=base;
+  return {
+    push(piece){
+      received+=String(piece||'');
+      if(!settled){
+        const result=continuationAlignment(base,received);
+        if(!result.ready)return;
+        if(result.issue)throw new Error(result.issue);
+        settled={overlap:result.overlap,prefixChars:result.prefixChars||0};
+      }
+      latest=base+received.slice(settled.prefixChars+settled.overlap);
+      onChange?.(latest);
+    },
+    finish(){
+      if(!settled){
+        const result=continuationAlignment(base,received,{final:true});
+        if(result.issue)throw new Error(result.issue);
+        settled={overlap:result.overlap,prefixChars:result.prefixChars||0};
+      }
+      latest=base+received.slice(settled.prefixChars+settled.overlap);
+      onChange?.(latest);
+      return {content:latest,addedChars:latest.length-base.length,overlap: settled.overlap,
+        bufferedChars:settled.prefixChars+settled.overlap,receivedChars:received.length};
+    },
+    get content(){return latest;},
+    get received(){return received;}
+  };
+}
 // Zero-inference rolling request window. The full conversation stays in
 // local storage; only the messages sent to the provider are windowed.
 // Estimates are deliberately conservative and not a model tokenizer.
@@ -800,6 +880,19 @@ function contextTrimText(value,maxChars){
   const chars=maxChars-marker.length;
   const head=Math.ceil(chars*0.64);
   return original.slice(0,head)+marker+original.slice(-Math.max(0,chars-head));
+}
+function contextTrimContinuationTail(value,maxChars){
+  const text=String(value||'');
+  if(text.length<=maxChars)return text;
+  const note='[Earlier assistant output omitted by the rolling context. The exact ending follows; continue only after its final character.]\n';
+  const chars=Math.max(0,maxChars-note.length);
+  // Preserve the very end rather than the beginning of a large generation.
+  // An excerpt is supplied once as the existing assistant message, not as a
+  // duplicated user prompt. Don't cut away the final partial code statement.
+  let start=Math.max(0,text.length-chars);
+  const newline=text.indexOf('\n',start);
+  if(newline>=start&&newline<start+Math.min(80,Math.floor(chars/8)))start=newline+1;
+  return note+text.slice(start);
 }
 function contextCompactTool(value,maxChars){
   const raw=String(value||'');
@@ -838,7 +931,9 @@ function shortenContextMessage(message,targetTokens){
   if(typeof message.content==='string'){
     newMessage.content=message.role==='tool'
       ?contextCompactTool(message.content,targetChars)
-      :contextTrimText(message.content,targetChars);
+      :message.continuationTail
+        ?contextTrimContinuationTail(message.content,targetChars)
+        :contextTrimText(message.content,targetChars);
   }else if(Array.isArray(message.content)){
     const originalText=message.content.filter(x=>x?.type==='text').map(x=>x.text||'').join('\n');
     const protectedTokens=contextMessageTokens(message)-estimatedContextTokens(originalText);
@@ -905,7 +1000,7 @@ function rollContextMessages(original,profile,{keepRecentTurns=2}={}){
       ' may be omitted or excerpted to fit the selected input window. Do not claim to remember omitted details. '+
       'The full conversation remains available in the browser UI.'});
   }
-  const result=[...systems,...kept];
+  const result=[...systems,...kept].map(({continuationTail,...message})=>message);
   return {messages:result,stats:{
     budget,estimatedTokens:sumTokens(result),sourceMessages:original.length,
     sentMessages:result.length,droppedMessages,droppedTurns,
