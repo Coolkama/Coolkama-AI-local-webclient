@@ -780,22 +780,29 @@ function continuationProtocol(provider,profile){
     return 'assistant-prefill';
   return 'followup-turn';
 }
+function withRequestDate(history,dateContext){
+  const leading=[],rest=[...history];
+  while(rest[0]?.role==='system')leading.push(rest.shift());
+  // Static instructions come before the time-specific message so that
+  // a Groq prompt-cache prefix remains identical across this answer.
+  return [...leading,{role:'system',content:dateContext},...rest];
+}
 function buildContinuationMessages({provider,profile,history,previous,instruction,followup,dateContext}){
   const protocol=continuationProtocol(provider,profile);
   // Give the model one, and only one, copy of its previous answer.
-  // For Groq prefill the final message must be assistant. The client
-  // already knows that entire prefix; streamed tokens are only the suffix.
-  const leading=[],rest=[...history];
-  while(rest[0]?.role==='system')leading.push(rest.shift());
-  const messages=[
-    ...leading,
-    {role:'system',content:instruction},
-    {role:'system',content:dateContext},
-    ...rest,
-    {role:'assistant',content:previous,continuationTail:true}
-  ];
-  if(protocol==='followup-turn')
-    messages.push({role:'user',content:followup});
+  // Groq assistant prefilling must be the final message. In this mode
+  // NO new continuation instruction or user prompt is inserted: preserve
+  // the original request prefix for Groq automatic prompt caching.
+  const messages=protocol==='assistant-prefill'
+    ?withRequestDate(history,dateContext)
+    :(()=>{
+      const leading=[],rest=[...history];
+      while(rest[0]?.role==='system')leading.push(rest.shift());
+      return [...leading,{role:'system',content:instruction},
+        {role:'system',content:dateContext},...rest];
+    })();
+  messages.push({role:'assistant',content:previous,continuationTail:true});
+  if(protocol==='followup-turn')messages.push({role:'user',content:followup});
   return {protocol,messages};
 }
 function mergeContinuedText(original,generated){
@@ -1861,6 +1868,7 @@ function App() {
     const diagCtx={chatId,turnId:assistantId};
     diagLog('normal','turn-start',{provider,requestedModel:config.model,webEnabled:!!searchMode,attachedFiles:files.map(f=>({name:f.name,type:f.type,truncated:!!f.truncated})),historyMessages:nextThread.messages.length-2},diagCtx);
     diagLog('full','user-message',{text:content},diagCtx);
+    const requestDateContext=runtimeDateContext();
     let output='',lastPaint=0,allSources=[],searchLog=[],openLog=[],incomplete=false,incompleteReason=null,autoEligible=false,autoRounds=0,continuationFailure=null;
     const openedPages=new Map(),openFailures=new Map();
     const patchAssistant=changes=>patchChat(chatId,c=>({...c,updatedAt:Date.now(),messages:c.messages.map(m=>m.id===assistantId?{...m,...changes}:m)}));
@@ -1892,7 +1900,7 @@ function App() {
           if(searchMode)status(canUseWebTools?
             `AI thinking · ${searchesUsed}/${budget} searches · ${opensUsed}/${MAX_TOOL_OPENS} opens…`:
             'Research tool budget reached · generating final response…');
-          const windowed=rollContextMessages([{role:'system',content:runtimeDateContext()},...messages],config);
+          const windowed=rollContextMessages(withRequestDate(messages,requestDateContext),config);
           const requestMessages=windowed.messages;
           diagLog('normal','context-window',{...windowed.stats,round,provider},roundCtx);
           patchAssistant({contextWindow:{...windowed.stats}});
@@ -2092,7 +2100,7 @@ function App() {
             const previousFence=unclosedCodeFence(previous);
             const continuationPlan=buildContinuationMessages({
               provider,profile:config,history:messages,previous,
-              instruction:continueRule,dateContext:runtimeDateContext(),
+              instruction:continueRule,dateContext:requestDateContext,
               followup:'Continue exactly where the preceding answer ended. '+
                 (previousFence?'It ends inside a '+(previousFence.language||'code')+' Markdown fence. ':'')+
                 'Reply with only the remaining text, no repetition.'
