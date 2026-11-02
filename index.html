@@ -1123,6 +1123,48 @@ const wait = (ms,signal) => new Promise((resolve,reject) => {
   function cancel(){clearTimeout(t);reject(new DOMException('Stopped','AbortError'));}
   signal.addEventListener('abort',cancel,{once:true});
 });
+async function streamChatWithRateWait(options,onReserved=()=>{}){
+  const {provider,signal,trace={}}=options;
+  let providerRetries=0,localWaits=0;
+  while(true){
+    if(signal?.aborted)throw new DOMException('Stopped','AbortError');
+    try{
+      reserveFreeUse(provider);
+      onReserved();
+    }catch(error){
+      // Automatic Groq continuation must also respect this app's conservative
+      // minute quota. A daily cap, or failure to save the counter, remains final.
+      if(provider!=='groq'||!String(error.message).includes('local minute allowance')||localWaits>=2)
+        throw error;
+      const delay=groqLocalMinuteWait();
+      if(delay<=0||delay>65000)throw error;
+      localWaits++;
+      diagLog('normal','groq-local-minute-wait',{delayMs:delay,attempt:localWaits},trace);
+      await wait(delay,signal);
+      continue;
+    }
+    let streamed=false;
+    try{
+      return await streamChat({...options,onToken:text=>{
+        if(text)streamed=true;
+        options.onToken?.(text);
+      }});
+    }catch(error){
+      if(provider!=='groq'||!isGroqRateLimit(error)||streamed||
+         providerRetries>=MAX_GROQ_RATE_RETRIES)throw error;
+      const delay=groqRetryDelay(error);
+      if(delay===null||delay>MAX_GROQ_AUTO_WAIT_MS)
+        throw error;
+      // No automatic paid provider/model changes. Wait for Groq's own window.
+      providerRetries++;
+      diagLog('normal','groq-rate-wait',{
+        delayMs:delay,attempt:providerRetries,maxRetries:MAX_GROQ_RATE_RETRIES,
+        status:error.status||null,source:error.retryHeaders?.retryAfter?'retry-after':'provider-message'
+      },trace);
+      await wait(delay,signal);
+    }
+  }
+}
 async function demoStream(prompt,signal,onToken) {
   const reply = `## Test mode is working ✨\n\nYour message was: **${prompt.trim().slice(0,140)||'an attachment'}**\n\nThis response is being streamed in small chunks without contacting an LLM. Try the **Copy** and **Save** buttons on this code block:\n\n\`\`\`javascript\nconst greeting = 'Hello from LLM Workbench!';\nconsole.log(greeting);\n\`\`\`\n\n- **Markdown** and syntax highlighting are enabled.\n- Chats, settings and attachments are stored in your browser.\n- Switch to a real provider in **Settings** to start chatting.`;
   for(const chunk of reply.match(/.{1,7}|\n/g) || []) { await wait(36,signal);onToken(chunk); }
