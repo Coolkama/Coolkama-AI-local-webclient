@@ -956,7 +956,7 @@ function Icon({name,size=19,className=''}) {
   };
   return <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]||paths.spark}</svg>;
 }
-function Message({message,streaming}) {
+function Message({message,streaming,onContinue,canContinue=false}) {
   const user=message.role==='user';
   const searchLog=message.searchLog||[],openLog=message.openLog||[],sources=message.sources||[];
   const hasWebActivity=!user&&(searchLog.length>0||openLog.length>0||sources.length>0||!!message.searchingWeb);
@@ -993,7 +993,9 @@ function Message({message,streaming}) {
         {(message.attachments||[]).length>0&&<div className="flex flex-wrap gap-2 mt-2">{message.attachments.map(a=>a.type==='image'?<div key={a.id} className="relative"><img src={a.dataUrl} alt={a.name} title={a.name} className="w-24 h-24 md:w-32 md:h-32 object-cover rounded-xl border border-slate-600"/></div>:<div key={a.id} title={a.name} className="max-w-full flex items-center gap-1.5 text-xs text-slate-300 bg-slate-800 border border-slate-700 px-2.5 py-2 rounded-lg"><Icon name="file" size={15}/><span className="truncate max-w-44">{a.name}</span>{a.truncated&&<span className="text-amber-400">(partial)</span>}</div>)}</div>}
         {message.status==='error'&&<div className="mt-2 text-xs text-rose-400 break-words">{message.error||'Request failed'}</div>}
         {message.status==='stopped'&&<div className="mt-2 text-xs text-amber-400">Generation stopped</div>}
-        {message.status==='incomplete'&&<div className="mt-2 text-xs text-amber-400">{message.incompleteReason==='output_limit'?'Response reached the model’s output-token limit. The code or answer may be cut off; increase Max output tokens in Settings and regenerate, or ask the model to continue.':'Incomplete answer · retrieved sources preserved above'}</div>}
+        {message.status==='incomplete'&&<div className="mt-2 text-xs text-amber-400">{message.incompleteReason==='output_limit'?'The response reached the output-token limit. You can continue writing into this same answer.':message.incompleteReason==='unfinished_code'?'The response ended with an unclosed code block. Continue to finish it.':'Incomplete answer · retrieved sources preserved above'}</div>}
+        {message.continuationError&&message.status==='incomplete'&&<div className="mt-2 text-xs text-amber-300 break-words">{message.continuationError}</div>}
+        {canContinue&&<button type="button" onClick={()=>onContinue(message.id)} className="mt-3 inline-flex gap-2 items-center rounded-lg border border-indigo-500/60 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-100 px-3 py-2 text-xs font-semibold" title="Spend one free-model inference request to append to this answer"><Icon name="arrow" size={15}/> Continue writing{message.continuations?(' · '+message.continuations+'/'+MAX_MANUAL_CONTINUATIONS):''}</button>}
       </div>
     </div>
   </div>;
