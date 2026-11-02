@@ -151,7 +151,8 @@ const DIAG_LEVEL_KEY='llm-workbench-diagnostic-level-v1';
 const DIAG_EVENT='llm-workbench-diagnostics-changed';
 const DIAG_EVENT_LIMIT=400,DIAG_SIZE_LIMIT=650000;
 const diagLevels=['normal','detailed','full'];
-let diagnosticMemory=[];
+let diagnosticMemory=null;
+let diagStorageError=false;
 function diagLevel(){
   try {const s=localStorage.getItem(DIAG_LEVEL_KEY);return diagLevels.includes(s)?s:'normal';}
   catch{return 'normal';}
@@ -162,8 +163,10 @@ function diagSetLevel(level){
   window.dispatchEvent(new Event(DIAG_EVENT));
 }
 function diagRead(){
-  try{const a=JSON.parse(localStorage.getItem(DIAG_KEY)||'[]');return Array.isArray(a)?a:diagnosticMemory;}
-  catch{return diagnosticMemory;}
+  if(diagnosticMemory)return diagnosticMemory;
+  try{const a=JSON.parse(localStorage.getItem(DIAG_KEY)||'[]');diagnosticMemory=Array.isArray(a)?a:[];}
+  catch{diagnosticMemory=[];}
+  return diagnosticMemory;
 }
 function diagSafe(value,depth=0){
   if(depth>9)return '[depth omitted]';
@@ -191,8 +194,8 @@ function diagTraceMessages(messages){
   return (messages||[]).map(m=>({
     role:m.role,
     content:diagSafe(m.content),
-    tool_call_id:m.tool_call_id,
-    tool_calls:m.tool_calls?diagSafe(m.tool_calls):undefined
+    ...(m.tool_call_id?{tool_call_id:m.tool_call_id}:{}),
+    ...(m.tool_calls?{tool_calls:diagSafe(m.tool_calls)}:{})
   }));
 }
 function diagLog(level,type,data={},ctx={}){
@@ -205,12 +208,13 @@ function diagLog(level,type,data={},ctx={}){
   const records=[...diagRead(),record].slice(-DIAG_EVENT_LIMIT);
   while(records.length>1&&JSON.stringify(records).length>DIAG_SIZE_LIMIT)records.shift();
   diagnosticMemory=records;
-  try{localStorage.setItem(DIAG_KEY,JSON.stringify(records));}catch{}
+  try{localStorage.setItem(DIAG_KEY,JSON.stringify(records));diagStorageError=false;}
+  catch{diagStorageError=true;}
   try{window.dispatchEvent(new Event(DIAG_EVENT));}catch{}
 }
 function diagClear(){
   diagnosticMemory=[];
-  try{localStorage.removeItem(DIAG_KEY);}catch{}
+  try{localStorage.removeItem(DIAG_KEY);diagStorageError=false;}catch{diagStorageError=true;}
   window.dispatchEvent(new Event(DIAG_EVENT));
 }
 function diagExport(chatId=null){
@@ -704,6 +708,7 @@ function DiagnosticsPanel({chatId,onClose}){
           <button className="btn btn-soft !text-xs" onClick={()=>diagExport()} disabled={!all.length}><Icon name="download" size={15}/> Save all logs</button>
           <button className="btn btn-soft !text-xs text-rose-300" onClick={deleteLog} disabled={!all.length}><Icon name="trash" size={15}/> Clear</button>
         </div>
+        {diagStorageError&&<p className="text-xs text-rose-300 border border-rose-700/40 rounded-lg p-2">Browser storage is full or blocked. These logs remain available for download in this tab but may not survive a reload. Download them now if needed.</p>}
         <div className="flex justify-between items-center text-[11px] text-slate-400"><span>{shown.length} displayed · {all.length} stored</span><span>Maximum {DIAG_EVENT_LIMIT} events / 650 KB</span></div>
         <div className="space-y-2">
           {!shown.length?<div className="rounded-xl border border-slate-800 p-5 text-center text-xs text-slate-400">No diagnostic events for this view yet. Send a message to capture a trace.</div>:shown.slice().reverse().slice(0,100).map(event=><details key={event.id} className="border border-slate-800 rounded-xl bg-slate-900/60 px-3 py-2 text-xs">
@@ -733,11 +738,15 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
   const updateConfirmation=checked=>onChange(s=>({...s,freeTierConfirmed:{...s.freeTierConfirmed,[provider]:checked}}));
   async function loadModels() {
     setLoadingModels(true);setModelError('');setDiscovered([]);
+    const discoveryTrace={chatId:null,turnId:null};
+    const discoveryStart=performance.now();
+    diagLog('normal','model-discovery-start',{provider,endpoint:profile.url.replace(/\/+$/,'')+'/models'},discoveryTrace);
     try {
       if(provider==='demo')return;
       enforceFreeOnly(provider,profile,{...value,freeTierConfirmed:{...value.freeTierConfirmed,[provider]:true}});
       const headers={};if(provider!=='ollama'&&profile.key.trim())headers.Authorization='Bearer '+profile.key.trim();
       const res=await fetch(profile.url.replace(/\/+$/,'')+'/models',{headers});
+      diagLog('normal','model-discovery-http',{provider,status:res.status,elapsedMs:Math.round(performance.now()-discoveryStart)},discoveryTrace);
       if(!res.ok)throw new Error('HTTP '+res.status);
       const data=await res.json();
       const candidates=(data.data||data.models||[]);
@@ -758,8 +767,13 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
       const unique=[...new Set(models)].slice(0,300);
       if(!unique.length)throw new Error('No confirmed FREE models returned. Refusing all unknown/paid models.');
       setDiscovered(unique);setDiscoveredAt(Date.now());
+      diagLog('normal','model-discovery-complete',{provider,freeModels:unique.length,elapsedMs:Math.round(performance.now()-discoveryStart)},discoveryTrace);
+      diagLog('detailed','model-discovery-free-models',{models:unique},discoveryTrace);
       setModelError(`${unique.length} free-only model(s) available. Paid/unknown models were hidden.`);
-    } catch(e) {setModelError(e.message+' · Check free-tier access, URL, key and CORS.');}
+    } catch(e) {
+      diagLog('normal','model-discovery-error',{provider,message:e.message||String(e)},discoveryTrace);
+      setModelError(e.message+' · Check free-tier access, URL, key and CORS.');
+    }
     finally {setLoadingModels(false);}
   }
   return <div className="fixed inset-0 z-50 flex justify-center items-end sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-label="Settings">
