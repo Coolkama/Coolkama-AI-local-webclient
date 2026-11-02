@@ -832,11 +832,14 @@ function continuationAlignment(previous,generated,{final=false}={}){
 }
 function createContinuationJoiner(previous,onChange){
   const base=String(previous||'');
-  let received='',settled=null,latest=base;
+  let received='',settled=null,latest=base,lastChecked=0;
   return {
     push(piece){
       received+=String(piece||'');
       if(!settled){
+        // Avoid running an overlap scan for every one-character SSE chunk.
+        if(received.length<600||received.length-lastChecked<128)return;
+        lastChecked=received.length;
         const result=continuationAlignment(base,received);
         if(!result.ready)return;
         if(result.issue)throw new Error(result.issue);
