@@ -8,7 +8,7 @@ A standalone, mobile-first LLM workbench and chat client built as a **single cli
 
 - Multiple saved chats, streamed model responses, Markdown/code highlighting and code snippet downloads.
 - Free-only remote model selection, conservative browser-side usage limits, and optional local Ollama or offline test mode.
-- Opt-in free-tier web search.
+- Opt-in, model-driven web search: tool-capable LLMs can call a browser-owned Tavily Basic `web_search` function, receive sources and refine queries in the same turn (up to 3 searches per user message). Each search and each model round trip consumes the corresponding free-tier allowance and local counter. Models that do not support tools may reject web-enabled requests; no paid fallback is used.
 - User-selected PDF, image, text and code-file attachments.
 - Browser-local persistence for chats, settings and API keys.
 
@@ -16,7 +16,7 @@ A standalone, mobile-first LLM workbench and chat client built as a **single cli
 
 **Users choose files to upload/process. Users can download generated outputs. The app must not edit, overwrite, delete, move or otherwise modify files already on their device.** File input is through browser-controlled selection, and saving is through normal browser downloads—not direct filesystem writes.
 
-Selected content may be sent to the configured external AI provider when the user submits a request. Files and chats are not automatically uploaded to GitHub. Browser localStorage is origin-specific, not a synchronised account, and API keys stored there are not encrypted.
+Selected content may be sent to the configured external AI provider when the user submits a request. When web search is enabled, model-generated queries (which may include conversation details) are also sent to Tavily. Files and chats are not automatically uploaded to GitHub. Browser localStorage is origin-specific, not a synchronised account, and API keys stored there are not encrypted.
 
 ## Running
 
