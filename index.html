@@ -383,7 +383,7 @@ const PROVIDERS = {
     models: [['offline-demo','Offline streaming simulator']]
   }
 };
-const freshProfiles = () => Object.fromEntries(Object.entries(PROVIDERS).map(([id,p]) => [id, { key:'', url:p.url, model:p.model, maxTokens:id==='groq'?4096:2048, outputLimitMode:'auto', contextTokens:id==='groq'?3072:8192 }]));
+const freshProfiles = () => Object.fromEntries(Object.entries(PROVIDERS).map(([id,p]) => [id, { key:'', url:p.url, model:p.model, maxTokens:id==='groq'?4096:2048, outputLimitMode:'auto', contextTokens:8192, groqPrefill:true }]));
 const CONTEXT_WINDOW_CHOICES = [2048,3072,4096,8192,16384,32768,65536];
 function contextInputLimit(profile){
   const n=Number(profile?.contextTokens);
@@ -399,7 +399,7 @@ function outputTokenLimit(profile){
   return value;
 }
 const defaultSearch = () => ({ enabled:false, mode:'tavily', tavilyKey:'', maxResults:4, maxToolSearches:3, tavilyFreeConfirmed:false });
-const defaults = () => ({ provider:'openrouter', temperature:0.7, autoContinue:true, systemPrompt:'You are a helpful, accurate assistant. Format code using fenced Markdown code blocks with language identifiers.', profiles:freshProfiles(), search:defaultSearch(), freeTierConfirmed:{openrouter:false,groq:false,gemini:false} });
+const defaults = () => ({ provider:'openrouter', temperature:0.7, autoContinue:true, groqContextMigrationV2:true, systemPrompt:'You are a helpful, accurate assistant. Format code using fenced Markdown code blocks with language identifiers.', profiles:freshProfiles(), search:defaultSearch(), freeTierConfirmed:{openrouter:false,groq:false,gemini:false} });
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 const newChat = () => ({ id:uid(), title:'New conversation', createdAt:Date.now(), updatedAt:Date.now(), messages:[] });
 function readSaved() {
@@ -412,10 +412,14 @@ function readSaved() {
       // Migration: silently REJECT saved paid/custom model IDs and remote base URLs.
       if(!isApprovedModel(k,merged.model))merged.model=base.profiles[k].model;
       if(k!=='ollama')merged.url=base.profiles[k].url;
+      // One-time upgrade from the old 3,072 Groq default. Keep deliberate
+      // custom budgets and do not re-upgrade if the user later chooses 3,072.
+      if(k==='groq'&&!data.settings?.groqContextMigrationV2&&Number(merged.contextTokens)===3072)
+        merged.contextTokens=8192;
       return [k,merged];
     }));
     return {
-      settings: {...base, ...(data.settings || {}), profiles,
+      settings: {...base, ...(data.settings || {}), groqContextMigrationV2:true, profiles,
         search:{...base.search,...(data.settings?.search||{}),mode:'tavily',tavilyFreeConfirmed:!!data.settings?.search?.tavilyFreeConfirmed},
         freeTierConfirmed:{...base.freeTierConfirmed,...(data.settings?.freeTierConfirmed||{})},
         provider: PROVIDERS[data.settings?.provider] ? data.settings.provider : 'openrouter'},
@@ -759,6 +763,40 @@ function unclosedCodeFence(markdown){
     }
   }
   return opened;
+}
+// Each provider owns its continuation protocol. Never assume a capability
+// documented by Groq is implemented by OpenRouter, Gemini or local Ollama.
+const CONTINUATION_PROTOCOLS = Object.freeze({
+  groq:'assistant-prefill',
+  openrouter:'followup-turn',
+  gemini:'followup-turn',
+  ollama:'followup-turn',
+  demo:'followup-turn'
+});
+function continuationProtocol(provider,profile){
+  const configured=CONTINUATION_PROTOCOLS[provider]||'followup-turn';
+  if(configured==='assistant-prefill'&&profile?.groqPrefill!==false&&
+      /^openai\/gpt-oss-(?:20b|120b)$/.test(String(profile?.model||'')))
+    return 'assistant-prefill';
+  return 'followup-turn';
+}
+function buildContinuationMessages({provider,profile,history,previous,instruction,followup,dateContext}){
+  const protocol=continuationProtocol(provider,profile);
+  // Give the model one, and only one, copy of its previous answer.
+  // For Groq prefill the final message must be assistant. The client
+  // already knows that entire prefix; streamed tokens are only the suffix.
+  const leading=[],rest=[...history];
+  while(rest[0]?.role==='system')leading.push(rest.shift());
+  const messages=[
+    ...leading,
+    {role:'system',content:instruction},
+    {role:'system',content:dateContext},
+    ...rest,
+    {role:'assistant',content:previous,continuationTail:true}
+  ];
+  if(protocol==='followup-turn')
+    messages.push({role:'user',content:followup});
+  return {protocol,messages};
 }
 function mergeContinuedText(original,generated){
   const base=String(original||'');
@@ -1587,7 +1625,8 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
           <select className="field" value={contextInputLimit(profile)} onChange={e=>patchProfile({contextTokens:Number(e.target.value)})}>
             {CONTEXT_WINDOW_CHOICES.map(n=><option key={n} value={n}>{n.toLocaleString('en-GB')} estimated tokens</option>)}
           </select>
-          <p className="text-[11px] text-slate-400 mt-1">Keeps the latest two conversation turns, shortens oversized excerpts and drops older turns only from the API request. The full chat stays in this browser. No LLM summarisation calls. Estimates vary by model; choose a smaller window on Groq to reduce tokens-per-minute pressure.</p>
+          <p className="text-[11px] text-slate-400 mt-1">Keeps the latest two conversation turns, shortens oversized excerpts and drops older turns only from the API request. The full chat stays in this browser. No LLM summarisation calls. {provider==='groq'?'Groq defaults to 8,192 estimated input tokens to retain more code across continuations; larger requests can trigger rate-limit waits.':'Estimates vary by model and provider.'}</p>
+          {provider==='groq'&&<label className="flex items-start gap-2 text-xs text-slate-300 mt-3"><input type="checkbox" className="accent-indigo-500 mt-0.5" checked={profile.groqPrefill!==false} onChange={e=>patchProfile({groqPrefill:e.target.checked})}/><span><strong>GPT-OSS assistant prefilling</strong><span className="block text-slate-400 mt-1">On Groq GPT-OSS 20B/120B, continue from the final assistant message without appending a new user prompt. Turn off to use the standard continuation protocol if a model rejects the prefill.</span></span></label>}
         </div>
         <div>
           <label className="block text-xs font-semibold text-slate-300 mb-2">Output length (per model request)</label>
