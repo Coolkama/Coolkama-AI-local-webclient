@@ -1134,6 +1134,13 @@ function Message({message,streaming,onContinue,canContinue=false}) {
         {message.status==='stopped'&&<div className="mt-2 text-xs text-amber-400">Generation stopped</div>}
         {message.status==='incomplete'&&<div className="mt-2 text-xs text-amber-400">{message.incompleteReason==='output_limit'?'The response reached the output-token limit. You can continue writing into this same answer.':message.incompleteReason==='unfinished_code'?'The response ended with an unclosed code block. Continue to finish it.':'Incomplete answer · retrieved sources preserved above'}</div>}
         {legacyOpenCode&&<div className="mt-2 text-xs text-amber-400">This older reply has an unfinished code fence. You can continue it in place.</div>}
+        {!user&&message.contextWindow&&(message.contextWindow.droppedMessages||message.contextWindow.shortenedMessages)&&
+          <p className="mt-3 text-[11px] text-slate-500">
+            <Icon name="layers" size={12}/> Rolling context · {message.contextWindow.budget.toLocaleString('en-GB')} estimated input tokens ·
+            {message.contextWindow.droppedMessages?' '+message.contextWindow.droppedMessages+' older messages omitted from this request':''}
+            {message.contextWindow.shortenedMessages?' · '+message.contextWindow.shortenedMessages+' excerpts shortened':''}
+            {message.contextWindow.exceedsBudget?' · estimated window exceeded':''}
+          </p>}
         {message.continuationError&&message.status==='incomplete'&&<div className="mt-2 text-xs text-amber-300 break-words">{message.continuationError}</div>}
         {canContinue&&<button type="button" onClick={()=>onContinue(message.id)} className="mt-3 inline-flex gap-2 items-center rounded-lg border border-indigo-500/60 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-100 px-3 py-2 text-xs font-semibold" title="Spend one free-model inference request to append to this answer"><Icon name="arrow" size={15}/> Continue writing{message.continuations?(' · '+message.continuations+'/'+MAX_MANUAL_CONTINUATIONS):''}</button>}
       </div>
@@ -1305,6 +1312,12 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
           <div><label className="block text-xs font-semibold text-slate-300 mb-2">Maximum web searches per message (1 Basic credit each)</label><select className="field" value={searchBudget(value)} onChange={e=>patchSearch({maxToolSearches:Number(e.target.value)})}>{[1,2,3].map(n=><option key={n} value={n}>{n} search{n>1?'es':''} maximum</option>)}</select><p className="text-[11px] text-slate-400 mt-1">The model may also open up to 3 retrieved pages with Basic Extract, each conservatively counted as one local Tavily credit. Every model continuation uses another free LLM request. No paid fallback.</p></div>
           <Quota provider="tavily"/>
           <p className="text-[11px] text-amber-200 leading-5">{FREE_DETAILS.tavily} The workbench supplies the current browser date, and recent-news searches may add a Basic search publication-date filter without additional credits. Citation checks flag links absent from retrieved evidence, but cannot independently fact-check every claim. The AI selects search queries from the conversation using function calling. <strong>Search queries are sent to Tavily and may contain details from your conversation.</strong> Some free models do not support tools; select a tool-capable model if your provider rejects the request. No chargeable search plugins or paid fallback.</p>
+        </div>
+        <div><label className="block text-xs font-semibold text-slate-300 mb-2">Rolling context window (approximate input tokens)</label>
+          <select className="field" value={contextInputLimit(profile)} onChange={e=>patchProfile({contextTokens:Number(e.target.value)})}>
+            {CONTEXT_WINDOW_CHOICES.map(n=><option key={n} value={n}>{n.toLocaleString('en-GB')} estimated tokens</option>)}
+          </select>
+          <p className="text-[11px] text-slate-400 mt-1">Keeps the latest two conversation turns, shortens oversized excerpts and drops older turns only from the API request. The full chat stays in this browser. No LLM summarisation calls. Estimates vary by model; choose a smaller window on Groq to reduce tokens-per-minute pressure.</p>
         </div>
         <div><label className="block text-xs font-semibold text-slate-300 mb-2">Maximum output tokens (per model request)</label><select className="field" value={outputTokenLimit(profile)} onChange={e=>patchProfile({maxTokens:Number(e.target.value)})}>{[1024,2048,3072,4096,6144,8192].map(n=><option key={n} value={n}>{n.toLocaleString('en-GB')} tokens</option>)}</select><p className="text-[11px] text-slate-400 mt-1">Long webpages and code may require 4,096–8,192 tokens. This is a maximum, not a guarantee. Higher settings can exceed free provider token-per-minute limits; choose the smallest that works.</p></div>
         <div><div className="flex justify-between mb-2"><label className="text-xs font-semibold text-slate-300">Temperature</label><span className="text-xs text-indigo-300 font-mono">{Number(value.temperature).toFixed(2)}</span></div><input type="range" min="0" max="2" step="0.05" className="w-full accent-indigo-500" value={value.temperature} onChange={e=>patch({temperature:Number(e.target.value)})}/></div>
