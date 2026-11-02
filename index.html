@@ -853,7 +853,7 @@ function rollContextMessages(original,profile,{keepRecentTurns=2}={}){
     groups[groups.length-1].push({...message});
   }
   const systemTokens=systems.reduce((n,m)=>n+contextMessageTokens(m),0);
-  const reserveForNote=38;
+  const reserveForNote=160;
   const available=Math.max(200,budget-systemTokens-reserveForNote);
   const mandatoryStart=Math.max(0,groups.length-keepRecentTurns);
   let kept=groups.slice(mandatoryStart).flat();
@@ -884,7 +884,6 @@ function rollContextMessages(original,profile,{keepRecentTurns=2}={}){
     if(sumTokens(kept)+need>available)break;
     kept=[...group,...kept];
   }
-  const retained=new Set(kept.map(m=>m)); // count by group lengths, not identity
   const keptCount=kept.length;
   droppedMessages=groups.reduce((n,g)=>n+g.length,0)-keptCount;
   for(let i=0,seen=0;i<groups.length;i++){
