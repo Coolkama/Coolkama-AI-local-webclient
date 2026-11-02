@@ -1443,9 +1443,11 @@ function App() {
     messages.push({role:'user',content:'Continue your immediately preceding answer, supplying only the next characters. '+
       (fence?'It currently ends inside an open '+(fence.language||'code')+' fenced block. ':'')+
       'Do not restart or repeat any part of it.'});
+    const continuationWindow=rollContextMessages(messages,config);
+    diagLog('normal','context-window',{...continuationWindow.stats,provider,continuation:true},diagCtx);
     workRef.current={id:chatId,turnId:messageId,controller};
     setBusy(chatId);
-    patchAssistant({status:'streaming',continuationError:null,continuations:count+1});
+    patchAssistant({status:'streaming',continuationError:null,continuations:count+1,contextWindow:continuationWindow.stats});
     diagLog('normal','continuation-start',{
       provider,model:config.model,previousChars:original.length,number:count+1,
       openFence:!!fence,maxOutputTokens:outputTokenLimit(config)
@@ -1454,7 +1456,7 @@ function App() {
       // A manual continuation is exactly one model call, never an automatic retry.
       reserveFreeUse(provider);setUsageRevision(v=>v+1);
       const response=await streamChat({
-        provider,profile:config,temperature:settings.temperature,messages,
+        provider,profile:config,temperature:settings.temperature,messages:continuationWindow.messages,
         signal:controller.signal,onToken:update,onSources:()=>{},
         toolsEnabled:false,trace:diagCtx
       });
@@ -1542,7 +1544,12 @@ function App() {
           if(searchMode)status(canUseWebTools?
             `AI thinking · ${searchesUsed}/${budget} searches · ${opensUsed}/${MAX_TOOL_OPENS} opens…`:
             'Research tool budget reached · generating final response…');
-          const requestMessages=[{role:'system',content:runtimeDateContext()},...messages];
+          const windowed=rollContextMessages([{role:'system',content:runtimeDateContext()},...messages],config);
+          const requestMessages=windowed.messages;
+          diagLog('normal','context-window',{...windowed.stats,round,provider},roundCtx);
+          if(windowed.stats.droppedMessages||windowed.stats.shortenedMessages){
+            patchAssistant({contextWindow:{...windowed.stats}});
+          }
           diagLog('normal','request-date-context',{dateUtc:new Date().toISOString(),browserTimeZone:Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC'},roundCtx);
           // Buffer the first few streamed characters. Some free models print
           // textual tool envelopes rather than structured tool calls. Do not
@@ -1580,7 +1587,9 @@ function App() {
             reserveFreeUse(provider);setUsageRevision(v=>v+1);
             status('Groq rejected a tool call · finishing with retrieved evidence…');
             output='';paint();
-            const recoveryMessages=[{role:'system',content:'Answer the latest user request using only the already returned web_search results. This is a final, text-only response. Do not call any tool, request additional results, emit tool markup, or fabricate URLs. Cite the known source IDs and distinguish limited or noisy excerpts.'},...requestMessages];
+            const recoveredWindow=rollContextMessages([{role:'system',content:'Answer the latest user request using only the already returned web_search results. This is a final, text-only response. Do not call any tool, request additional results, emit tool markup, or fabricate URLs. Cite the known source IDs and distinguish limited or noisy excerpts.'},...requestMessages],config);
+            const recoveryMessages=recoveredWindow.messages;
+            diagLog('normal','context-window',{...recoveredWindow.stats,provider,recovery:true},roundCtx);
             try{
               response=await streamChat({provider,profile:config,temperature:Math.min(Number(settings.temperature)||0.7,0.3),messages:recoveryMessages,signal:controller.signal,onToken:roundToken,onSources:addSources,toolsEnabled:false,finalOnly:true,trace:{...roundCtx,recovery:true}});
               if(response.toolCalls.length||!response.content.trim()||response.content.includes('<dots_function_call>')){
