@@ -69,6 +69,14 @@ When adding file features, prefer the browser File API for explicit selection an
 - Log window estimates, dropped complete turns, shortened excerpts and any unavoidable over-budget cases. Show a concise context disclosure beside the relevant assistant response.
 - Retain free-only caps, model selection including rotating OpenRouter free routing and static browser-only architecture.
 
+## Seamless completion and bounded rate waits
+
+- Default to **automatic continuation** on output-token-limit and unfinished code-fence responses. Stream appended text into the same assistant reply with no new visible turn or explicit wait/continuation indicator; use the existing safe code-fence/overlap merger. Provide a Settings opt-out.
+- Maximum **six additional model requests per completed answer**; do not automatically use Tavily, a paid model or a different provider. Every request must reserve a free-use counter entry. If cap, provider, cancellation or continuation quality prevents completion, retain partial text, mark the reply incomplete, and preserve manual continuation as a fallback. Stop aborts pending work.
+- For Groq **429**, parse `Retry-After` (numeric seconds or HTTP date), `Please try again in <duration>` and `x-ratelimit-reset-tokens`; support fractional seconds and hours/minutes/seconds. Retry only after the stated wait with a small guard, and only when the rejected attempt has emitted **no user-visible tokens**.
+- Bound to three 429 retries per model request and 15 minutes per individual provider wait; do not wait indefinitely for daily limits. Respect the separate app-side Groq minute/day caps (minute waits bounded, day limits final). Do not silently retry HTTP 400/401/413, non-Groq providers, or an already-streamed partial response.
+- The static/mobile browser cannot provide persistent background execution while the tab is closed or the OS suspends it. No background worker/server required. Log auto-continuation and rate waits in Normal/Full Trace without interrupting the ordinary chat presentation.
+
 ## In-place output continuation
 
 - Offer a **Continue writing** action on the latest assistant reply when it ends at the output limit or with a visibly unfinished fenced-code block; allow older stored Done messages with an unclosed fence to be continued too.
