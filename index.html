@@ -772,6 +772,140 @@ function mergeContinuedText(original,generated){
   }
   return base+tail;
 }
+// Zero-inference rolling request window. The full conversation stays in
+// local storage; only the messages sent to the provider are windowed.
+// Estimates are deliberately conservative and not a model tokenizer.
+function estimatedContextTokens(value){
+  if(typeof value==='string')return Math.ceil(value.length/3);
+  if(Array.isArray(value))return value.reduce((n,item)=>{
+    if(item?.type==='image_url')return n+1600;
+    return n+estimatedContextTokens(item?.text||item?.content||'');
+  },0);
+  return 0;
+}
+function contextMessageTokens(message){
+  return 12+estimatedContextTokens(message.content)+
+    (message.tool_calls?Math.ceil(JSON.stringify(message.tool_calls).length/3):0);
+}
+function contextTrimText(value,maxChars){
+  const original=String(value||'');
+  if(original.length<=maxChars)return original;
+  const removed=original.length-maxChars;
+  const marker='\n[Rolling context omitted '+removed+' characters from this older text]\n';
+  if(maxChars<=marker.length+20)return original.slice(0,Math.max(0,maxChars));
+  const chars=maxChars-marker.length;
+  const head=Math.ceil(chars*0.64);
+  return original.slice(0,head)+marker+original.slice(-Math.max(0,chars-head));
+}
+function contextCompactTool(value,maxChars){
+  const raw=String(value||'');
+  if(raw.length<=maxChars)return raw;
+  try{
+    const obj=JSON.parse(raw);
+    if(Array.isArray(obj.results)){
+      const base={query:obj.query,time_range:obj.time_range||null,
+        note:'Search results shortened to fit rolling context. Indices and URLs are unchanged.'};
+      const list=obj.results.map(r=>({
+        index:r.index,title:String(r.title||'').slice(0,100),
+        url:r.url,published_date:r.published_date||undefined,
+        excerpt:String(r.excerpt||'')
+      }));
+      const budget=Math.max(0,Math.floor((maxChars-JSON.stringify({...base,results:list.map(r=>({...r,excerpt:''}))}).length-45)/Math.max(1,list.length)));
+      const result=JSON.stringify({...base,results:list.map(r=>({...r,excerpt:contextTrimText(r.excerpt,budget)}))});
+      if(result.length<=maxChars)return result;
+    }
+    if(typeof obj.content==='string'){
+      const base={index:obj.index,url:obj.url,title:obj.title,
+        total_chars:obj.total_chars,truncated:true,
+        note:'Extracted page shortened by rolling context.',content:''};
+      const allowance=Math.max(0,maxChars-JSON.stringify(base).length-20);
+      const result=JSON.stringify({...base,content:contextTrimText(obj.content,allowance)});
+      if(result.length<=maxChars)return result;
+    }
+  }catch{}
+  return contextTrimText(raw,maxChars);
+}
+function shortenContextMessage(message,targetTokens){
+  const newMessage={...message},targetChars=Math.max(0,Math.floor(targetTokens*3));
+  if(typeof message.content==='string'){
+    newMessage.content=message.role==='tool'
+      ?contextCompactTool(message.content,targetChars)
+      :contextTrimText(message.content,targetChars);
+  }else if(Array.isArray(message.content)){
+    const originalText=message.content.filter(x=>x?.type==='text').map(x=>x.text||'').join('\n');
+    const protectedTokens=contextMessageTokens(message)-estimatedContextTokens(originalText);
+    const nextChars=Math.max(0,Math.floor((targetTokens-protectedTokens)*3));
+    let used=false;
+    newMessage.content=message.content.map(item=>{
+      if(item?.type!=='text')return item;
+      if(used)return {...item,text:'[Earlier text omitted by rolling context]'};
+      used=true;return {...item,text:contextTrimText(originalText,nextChars)};
+    });
+  }
+  return newMessage;
+}
+function rollContextMessages(original,profile,{keepRecentTurns=2}={}){
+  const budget=contextInputLimit(profile);
+  const systems=[],groups=[];
+  for(const message of original){
+    if(message.role==='system'&&!groups.length){systems.push({...message});continue;}
+    if(message.role==='user'||!groups.length)groups.push([]);
+    groups[groups.length-1].push({...message});
+  }
+  const systemTokens=systems.reduce((n,m)=>n+contextMessageTokens(m),0);
+  const reserveForNote=38;
+  const available=Math.max(200,budget-systemTokens-reserveForNote);
+  const mandatoryStart=Math.max(0,groups.length-keepRecentTurns);
+  let kept=groups.slice(mandatoryStart).flat();
+  let shortened=0,remaining=0,trimmedMessages=0;
+  const sumTokens=items=>items.reduce((total,m)=>total+contextMessageTokens(m),0);
+  // Preserve the most recent two conversational turns and every tool-call ID/
+  // matching tool result. Shorten content, never remove a tool call individually.
+  let passes=0;
+  while(sumTokens(kept)>available&&passes++<100){
+    const over=sumTokens(kept)-available;
+    const candidates=kept.map((m,i)=>{
+      const contentTokens=estimatedContextTokens(m.content);
+      const min=m.role==='user'?85:m.role==='tool'?70:70;
+      return {i,room:Math.max(0,contentTokens-min),contentTokens};
+    }).filter(x=>x.room>0).sort((a,b)=>b.room-a.room);
+    if(!candidates.length)break;
+    const choice=candidates[0],m=kept[choice.i];
+    const before=contextMessageTokens(m),target=Math.max(0,before-Math.min(over+12,choice.room));
+    const changed=shortenContextMessage(m,target);
+    const after=contextMessageTokens(changed);
+    if(after>=before)break;
+    kept[choice.i]=changed;shortened+=before-after;trimmedMessages++;
+  }
+  let droppedTurns=0,droppedMessages=0;
+  // Older history is taken as a contiguous suffix of complete user turns.
+  for(let i=mandatoryStart-1;i>=0;i--){
+    const group=groups[i],need=sumTokens(group);
+    if(sumTokens(kept)+need>available)break;
+    kept=[...group,...kept];
+  }
+  const retained=new Set(kept.map(m=>m)); // count by group lengths, not identity
+  const keptCount=kept.length;
+  droppedMessages=groups.reduce((n,g)=>n+g.length,0)-keptCount;
+  for(let i=0,seen=0;i<groups.length;i++){
+    seen+=groups[i].length;
+    if(seen<=droppedMessages)droppedTurns++;
+  }
+  const trimmed=trimmedMessages>0;
+  if(droppedMessages||trimmed){
+    systems.push({role:'system',content:
+      'Context management: earlier history'+(droppedMessages?' (including '+droppedTurns+' older turns)':'')+
+      ' may be omitted or excerpted to fit the selected input window. Do not claim to remember omitted details. '+
+      'The full conversation remains available in the browser UI.'});
+  }
+  const result=[...systems,...kept];
+  return {messages:result,stats:{
+    budget,estimatedTokens:sumTokens(result),sourceMessages:original.length,
+    sentMessages:result.length,droppedMessages,droppedTurns,
+    shortenedMessages:trimmedMessages,shortenedEstimatedTokens:shortened,
+    exceedsBudget:sumTokens(result)>budget
+  }};
+}
 function apiMessages(thread, systemPrompt) {
   const history=[];
   if(systemPrompt.trim()) history.push({role:'system',content:systemPrompt.trim()});
