@@ -60,6 +60,15 @@ When adding file features, prefer the browser File API for explicit selection an
 - Replace the text-heavy Web toggle above the composer with a compact, labelled, accessible globe icon immediately next to the file-attachment button, with clearly distinguishable on/off states.
 - Preserve free-only guards, provider rotation, model tool support, diagnostics and other product boundaries.
 
+## Rotating-model web-tool interoperability
+
+- Preserve OpenRouter's Any Free Model rotation even between function-calling rounds.
+- Recognise the known Dots-style textual `web_search` envelope as an interoperability fallback, with strict parsing and validation. Do not execute arbitrary textual commands or tool names.
+- Do not render textual tool markup as a successful assistant answer. Report the result as incomplete and preserve source links when the tool budget is exhausted or markup is malformed.
+- Keep previously retrieved titles, URLs and bounded excerpts available to future follow-up requests as untrusted evidence; prefer reusing them before charging another Tavily search.
+- Ensure a free inference continuation remains possible before making any additional Tavily request. If not, halt without spending the search credit.
+- Preserve the existing free-tier counters, three-search maximum, diagnostics and static-browser-only architecture.
+
 ## Date-aware, evidence-grounded research
 
 - Inject the current browser date/time, timezone and UTC date into every LLM request, including after tool calls. Do not rely on any model training cutoff as the current date.
