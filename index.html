@@ -383,8 +383,13 @@ const PROVIDERS = {
     models: [['offline-demo','Offline streaming simulator']]
   }
 };
-const freshProfiles = () => Object.fromEntries(Object.entries(PROVIDERS).map(([id,p]) => [id, { key:'', url:p.url, model:p.model, maxTokens:id==='groq'?4096:2048 }]));
+const freshProfiles = () => Object.fromEntries(Object.entries(PROVIDERS).map(([id,p]) => [id, { key:'', url:p.url, model:p.model, maxTokens:id==='groq'?4096:2048, contextTokens:id==='groq'?4096:8192 }]));
 const MAX_OUTPUT_TOKENS = 8192;
+const CONTEXT_WINDOW_CHOICES = [2048,4096,8192,16384,32768,65536];
+function contextInputLimit(profile){
+  const n=Number(profile?.contextTokens);
+  return Number.isFinite(n)?Math.max(2048,Math.min(65536,Math.trunc(n))):8192;
+}
 function outputTokenLimit(profile){
   const value=Number(profile?.maxTokens);
   return Number.isFinite(value)?Math.max(512,Math.min(MAX_OUTPUT_TOKENS,Math.trunc(value))):2048;
