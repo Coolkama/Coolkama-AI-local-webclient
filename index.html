@@ -695,17 +695,17 @@ function endpointUrl(base) {
   const root=base.trim().replace(/\/+$/,'');
   return root.endsWith('/chat/completions') ? root : root+'/chat/completions';
 }
-async function streamChat({provider, profile, temperature, messages, signal, onToken, onSources, toolsEnabled=false, trace={}}) {
+async function streamChat({provider, profile, temperature, messages, signal, onToken, onSources, toolsEnabled=false, finalOnly=false, trace={}}) {
   const began=performance.now();let firstTokenMs=null,chunkCount=0,sseEvents=0,actualModel=null,usage=null;
-  diagLog('normal','llm-request',{provider,requestedModel:profile.model,round:trace.round,toolsEnabled,messages:messages.length,maxTokens:2048},trace);
+  diagLog('normal','llm-request',{provider,requestedModel:profile.model,round:trace.round,toolsEnabled,finalOnly,messages:messages.length,maxTokens:2048},trace);
   // Full request is logged below after the exact payload has been constructed.
   const headers={'Content-Type':'application/json'};
   if(provider !== 'ollama') headers.Authorization=`Bearer ${profile.key.trim()}`;
   if(provider==='openrouter') {headers['HTTP-Referer']=location.origin==='null'?'https://openrouter.ai':location.origin;headers['X-Title']='LLM Workbench';}
   const payload={model:profile.model.trim(),messages,temperature:Number(temperature),stream:true,max_tokens:2048};
-  if(toolsEnabled) {
+  if(toolsEnabled||finalOnly) {
     payload.tools=WEB_SEARCH_TOOLS;
-    payload.tool_choice='auto';
+    payload.tool_choice=finalOnly?'none':'auto';
     if(provider==='openrouter'||provider==='groq')payload.parallel_tool_calls=false;
   }
   // Only the browser-owned function schema is allowed. No billable hosted tools or plugins.
@@ -720,7 +720,9 @@ async function streamChat({provider, profile, temperature, messages, signal, onT
     try {const obj=JSON.parse(body);reason=obj.error?.message||obj.message||reason;} catch {}
     const hint=toolsEnabled&&(res.status===400||res.status===404||res.status===422)
       ?' This model/endpoint may not support function calling. Choose a free model supporting tools; no paid fallback was attempted.':'';
-    throw new Error(`${res.status} ${res.statusText}: ${reason}${hint}`);
+    const failure=new Error(`${res.status} ${res.statusText}: ${reason}${hint}`);
+    if(reason.includes('Tool call validation failed'))failure.code='tool_use_failed';
+    throw failure;
   }
   const calls=new Map();
   let content='',finishReason=null;
@@ -779,7 +781,11 @@ async function streamChat({provider, profile, temperature, messages, signal, onT
     if(rawSse)rawSse.push(data);
     let obj;
     try {obj=JSON.parse(data);}catch{return;}
-    if(obj.error)throw new Error(obj.error.message||JSON.stringify(obj.error));
+    if(obj.error){
+      const failure=new Error(obj.error.message||JSON.stringify(obj.error));
+      failure.code=obj.error.code||null;
+      throw failure;
+    }
     sseEvents++;
     if(typeof obj.model==='string')actualModel=obj.model;
     if(obj.usage)usage=obj.usage;
