@@ -823,7 +823,11 @@ function contextCompactTool(value,maxChars){
       if(result.length<=maxChars)return result;
     }
   }catch{}
-  return contextTrimText(raw,maxChars);
+  // Tool results must remain parseable JSON even when the available
+  // context is too small to retain all result links and excerpts.
+  const header='{"truncated":true,"excerpt":""}';
+  const allowed=Math.max(0,maxChars-header.length-24);
+  return JSON.stringify({truncated:true,excerpt:contextTrimText(raw,allowed)});
 }
 function shortenContextMessage(message,targetTokens){
   const newMessage={...message},targetChars=Math.max(0,Math.floor(targetTokens*3));
@@ -1090,7 +1094,8 @@ function Icon({name,size=19,className=''}) {
     spark:<><path d="m12 2 2.1 7.9L22 12l-7.9 2.1L12 22l-2.1-7.9L2 12l7.9-2.1L12 2Z"/></>,
     download:<><path d="M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4"/></>,
     globe:<><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c-4 5-4 13 0 18M12 3c4 5 4 13 0 18"/></>,
-    activity:<path d="M3 12h4l3-8 4 16 3-8h4"/>
+    activity:<path d="M3 12h4l3-8 4 16 3-8h4"/>,
+    layers:<><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></>
   };
   return <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]||paths.spark}</svg>;
 }
@@ -1560,9 +1565,7 @@ function App() {
           const windowed=rollContextMessages([{role:'system',content:runtimeDateContext()},...messages],config);
           const requestMessages=windowed.messages;
           diagLog('normal','context-window',{...windowed.stats,round,provider},roundCtx);
-          if(windowed.stats.droppedMessages||windowed.stats.shortenedMessages){
-            patchAssistant({contextWindow:{...windowed.stats}});
-          }
+          patchAssistant({contextWindow:{...windowed.stats}});
           diagLog('normal','request-date-context',{dateUtc:new Date().toISOString(),browserTimeZone:Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC'},roundCtx);
           // Buffer the first few streamed characters. Some free models print
           // textual tool envelopes rather than structured tool calls. Do not
