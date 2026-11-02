@@ -1689,6 +1689,14 @@ function App() {
           try {
             response=await streamChatWithRateWait({provider,profile:config,temperature:settings.temperature,messages:requestMessages,signal:controller.signal,onToken:roundToken,onSources:addSources,toolsEnabled:canUseWebTools,toolDefinitions:availableTools,trace:roundCtx},()=>setUsageRevision(v=>v+1));
           }catch(error){
+            // A rare Groq streaming 429 can arrive after partial visible text.
+            // Never replay the same request (which would duplicate tokens); instead
+            // keep the partial answer and let the bounded completion loop resume it.
+            if(provider==='groq'&&isGroqRateLimit(error)&&output.trim()){
+              incomplete=true;incompleteReason='output_limit';autoEligible=true;answered=true;
+              diagLog('normal','groq-partial-rate-limit',{partialChars:output.length,reason:error.message},roundCtx);
+              break;
+            }
             const failedToolValidation=provider==='groq'&&allSources.length>0&&messages.some(m=>m.role==='tool')&&
               (error.code==='tool_use_failed'||/tool call validation failed/i.test(error.message||''));
             if(!failedToolValidation)throw error;
