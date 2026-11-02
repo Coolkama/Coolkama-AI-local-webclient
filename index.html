@@ -958,6 +958,7 @@ function Icon({name,size=19,className=''}) {
 }
 function Message({message,streaming,onContinue,canContinue=false}) {
   const user=message.role==='user';
+  const legacyOpenCode=!user&&message.status==='done'&&!!unclosedCodeFence(message.content);
   const searchLog=message.searchLog||[],openLog=message.openLog||[],sources=message.sources||[];
   const hasWebActivity=!user&&(searchLog.length>0||openLog.length>0||sources.length>0||!!message.searchingWeb);
   const searching=!!message.searchingWeb&&streaming;
@@ -994,6 +995,7 @@ function Message({message,streaming,onContinue,canContinue=false}) {
         {message.status==='error'&&<div className="mt-2 text-xs text-rose-400 break-words">{message.error||'Request failed'}</div>}
         {message.status==='stopped'&&<div className="mt-2 text-xs text-amber-400">Generation stopped</div>}
         {message.status==='incomplete'&&<div className="mt-2 text-xs text-amber-400">{message.incompleteReason==='output_limit'?'The response reached the output-token limit. You can continue writing into this same answer.':message.incompleteReason==='unfinished_code'?'The response ended with an unclosed code block. Continue to finish it.':'Incomplete answer · retrieved sources preserved above'}</div>}
+        {legacyOpenCode&&<div className="mt-2 text-xs text-amber-400">This older reply has an unfinished code fence. You can continue it in place.</div>}
         {message.continuationError&&message.status==='incomplete'&&<div className="mt-2 text-xs text-amber-300 break-words">{message.continuationError}</div>}
         {canContinue&&<button type="button" onClick={()=>onContinue(message.id)} className="mt-3 inline-flex gap-2 items-center rounded-lg border border-indigo-500/60 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-100 px-3 py-2 text-xs font-semibold" title="Spend one free-model inference request to append to this answer"><Icon name="arrow" size={15}/> Continue writing{message.continuations?(' · '+message.continuations+'/'+MAX_MANUAL_CONTINUATIONS):''}</button>}
       </div>
@@ -1250,8 +1252,11 @@ function App() {
   async function continueResponse(messageId){
     if(busy||workRef.current||reading||!active)return;
     const last=active.messages[active.messages.length-1];
-    if(!last||last.id!==messageId||last.role!=='assistant'||last.status!=='incomplete'||
-       !['output_limit','unfinished_code'].includes(last.incompleteReason))return;
+    if(!last||last.id!==messageId||last.role!=='assistant')return;
+    const currentIncomplete=last.status==='incomplete'&&
+      ['output_limit','unfinished_code'].includes(last.incompleteReason);
+    const legacyIncomplete=last.status==='done'&&!!unclosedCodeFence(last.content);
+    if(!currentIncomplete&&!legacyIncomplete)return;
     const count=Number(last.continuations)||0;
     if(count>=MAX_MANUAL_CONTINUATIONS){setNotice('Maximum six manual continuations per answer.');return;}
     const provider=settings.provider,config={...settings.profiles[provider]};
@@ -1316,6 +1321,7 @@ function App() {
         toolsEnabled:false,trace:diagCtx
       });
       if(/<dots_function_call>/i.test(response.content)){
+        generated='';combined=original;
         throw new Error('The model emitted tool markup instead of continuing the answer.');
       }
       combined=mergeContinuedText(original,generated);
@@ -1333,7 +1339,7 @@ function App() {
       combined=mergeContinuedText(original,generated);
       const cancelled=error.name==='AbortError';
       patchAssistant({content:combined,status:'incomplete',
-        incompleteReason:last.incompleteReason||'output_limit',
+        incompleteReason:last.incompleteReason||(legacyIncomplete?'unfinished_code':'output_limit'),
         continuationError:cancelled?'Continuation stopped. The partial text has been preserved.':
           (error.message||String(error))});
       diagLog('normal',cancelled?'continuation-aborted':'continuation-error',{
@@ -1631,8 +1637,10 @@ function App() {
           </div> : <div className="space-y-6">{active.messages.map(m=><Message key={m.id} message={m}
               streaming={busy===active.id&&m.role==='assistant'&&m.status==='streaming'}
               onContinue={continueResponse}
-              canContinue={!busy&&!reading&&m.role==='assistant'&&m.status==='incomplete'&&
-                (m.incompleteReason==='output_limit'||m.incompleteReason==='unfinished_code')&&
+              canContinue={!busy&&!reading&&m.role==='assistant'&&
+                ((m.status==='incomplete'&&
+                  (m.incompleteReason==='output_limit'||m.incompleteReason==='unfinished_code'))||
+                 (m.status==='done'&&!!unclosedCodeFence(m.content)))&&
                 m.id===active.messages[active.messages.length-1]?.id&&
                 (Number(m.continuations)||0)<MAX_MANUAL_CONTINUATIONS}/>)}</div>}
         </div>
