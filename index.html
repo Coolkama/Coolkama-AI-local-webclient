@@ -788,6 +788,7 @@ function Icon({name,size=19,className=''}) {
     stop:<rect x="6" y="6" width="12" height="12" rx="2"/>,
     check:<path d="M5 12l4 4L19 6"/>,
     arrow:<path d="M7 17 17 7M8 7h9v9"/>,
+    'arrow-down':<path d="M12 4v16m-7-7 7 7 7-7"/>,
     eye:<><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></>,
     eyeoff:<><path d="M3 3l18 18M10.6 5.1A11 11 0 0 1 12 5c6 0 10 7 10 7a16 16 0 0 1-3.1 3.8M6.2 6.2C3.7 8 2 12 2 12s4 7 10 7a10 10 0 0 0 4.2-.9"/></>,
     spark:<><path d="m12 2 2.1 7.9L22 12l-7.9 2.1L12 22l-2.1-7.9L2 12l7.9-2.1L12 2Z"/></>,
@@ -1021,7 +1022,9 @@ function App() {
   const [draft,setDraft]=useState(''),[attachments,setAttachments]=useState([]),[busy,setBusy]=useState(null),[notice,setNotice]=useState('');
   const [reading,setReading]=useState(false);
   const [usageRevision,setUsageRevision]=useState(0);
-  const inputRef=useRef(null),fileRef=useRef(null),bottomRef=useRef(null),workRef=useRef(null);
+  const [showLatest,setShowLatest]=useState(false);
+  const inputRef=useRef(null),fileRef=useRef(null),chatScrollRef=useRef(null),workRef=useRef(null);
+  const followTailRef=useRef(true),lastChatRef=useRef(null);
   const active=chats.find(c=>c.id===activeId)||chats[0];
   const profile=settings.profiles[settings.provider];
   const webEnabled=!!settings.search.enabled;
@@ -1029,7 +1032,31 @@ function App() {
     try {localStorage.setItem(STORAGE_KEY,JSON.stringify({chats,activeId:active?.id||activeId,settings}));}
     catch(e) {setNotice('Browser storage is full or unavailable. Large images may not survive a reload. Delete older chats or use smaller images.');}
   },[chats,activeId,settings]);
-  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:'smooth',block:'end'});},[active?.messages,activeId]);
+  // Follow only while the user is near the bottom. Never force the view back
+  // when they scroll upwards to read an answer still being streamed.
+  useLayoutEffect(()=>{
+    const el=chatScrollRef.current;
+    if(!el)return;
+    if(lastChatRef.current!==activeId){
+      lastChatRef.current=activeId;
+      followTailRef.current=true;
+      setShowLatest(false);
+    }
+    if(followTailRef.current)el.scrollTop=el.scrollHeight;
+  },[active?.messages,activeId]);
+  function onChatScroll(){
+    const el=chatScrollRef.current;
+    if(!el)return;
+    const nearBottom=el.scrollHeight-el.clientHeight-el.scrollTop<=90;
+    followTailRef.current=nearBottom;
+    setShowLatest(!nearBottom);
+  }
+  function jumpToLatest(){
+    const el=chatScrollRef.current;
+    followTailRef.current=true;
+    setShowLatest(false);
+    if(el)el.scrollTop=el.scrollHeight;
+  }
   useEffect(()=>{if(!draft&&inputRef.current)inputRef.current.style.height='auto';},[draft]);
   useEffect(()=>{if(notice){const id=setTimeout(()=>setNotice(''),7000);return()=>clearTimeout(id);}},[notice]);
   function addChat(){const c=newChat();setChats(old=>[c,...old]);setActiveId(c.id);setDraft('');setAttachments([]);setDrawer(false);}
@@ -1067,6 +1094,8 @@ function App() {
     let searchMode=null;
     try {searchMode=searchRoute(provider,settings);} catch(e){setNotice(e.message);setSettingsOpen(true);return;}
     const chatId=active.id,content=draft.trim(),files=[...attachments];
+    // An explicit send is an intentional navigation to the newest reply.
+    followTailRef.current=true;setShowLatest(false);
     const userMsg={id:uid(),role:'user',content,attachments:files,webSearch:!!searchMode,createdAt:Date.now()};
     const assistantId=uid(),assistantMsg={id:assistantId,role:'assistant',content:'',status:'streaming',searchStatus:searchMode?'Asking AI whether to search…':null,webSearch:!!searchMode,searchingWeb:false,createdAt:Date.now(),searchLog:[]};
     const nextThread={...active,title:active.messages.length===0?titleFrom(content,files):active.title,messages:[...active.messages,userMsg,assistantMsg]};
@@ -1194,7 +1223,8 @@ function App() {
         <span className="text-emerald-200 font-bold">FREE ONLY · No paid models or search</span>
         <button className="text-amber-200 underline shrink-0" onClick={()=>setSettingsOpen(true)}>Usage limits / billing warning</button>
       </div>
-      <section className="flex-1 min-h-0 overflow-y-auto thin-scroll" aria-label="Chat messages">
+      <div className="relative flex-1 min-h-0">
+      <section ref={chatScrollRef} onScroll={onChatScroll} className="chat-scroll h-full overflow-y-auto thin-scroll" aria-label="Chat messages">
         <div className="max-w-4xl mx-auto px-4 sm:px-8 py-6 md:py-8">
           {!active?.messages.length ? <div className="flex flex-col items-center justify-center text-center min-h-[48dvh]">
             <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-indigo-500/30 to-violet-600/10 border border-indigo-500/30 grid place-items-center text-indigo-300 mb-5"><Icon name="spark" size={30}/></div>
@@ -1203,22 +1233,22 @@ function App() {
             <div className="flex gap-2 flex-wrap justify-center mt-6">{['Write a Python script','Explain a PDF','Create a React component'].map(s=><button key={s} className="btn btn-soft border border-slate-700/70 !text-xs" onClick={()=>{setDraft(s);inputRef.current?.focus();}}>{s}</button>)}</div>
             <p className="text-xs text-slate-500 mt-6">Currently selected: <button className="text-indigo-300 underline" onClick={()=>setSettingsOpen(true)}>{PROVIDERS[settings.provider].name}</button></p>
           </div> : <div className="space-y-6">{active.messages.map(m=><Message key={m.id} message={m} streaming={busy===active.id&&m.role==='assistant'&&m.status==='streaming'}/>)}</div>}
-          <div ref={bottomRef}/>
         </div>
       </section>
+      {showLatest&&<button type="button" onClick={jumpToLatest} className="absolute bottom-4 right-4 sm:right-8 z-10 flex items-center gap-2 rounded-full bg-indigo-600 hover:bg-indigo-500 border border-indigo-400 px-3 py-2 text-xs font-semibold text-white shadow-xl" aria-label="Jump to latest message"><Icon name="arrow-down" size={15}/> Latest</button>}
+      </div>
       <div className="glass shrink-0 border-t border-slate-800 safe-bottom px-3 pt-3 sm:px-6">
         <div className="max-w-4xl mx-auto">
           {notice&&<div className="flex gap-2 items-start justify-between bg-amber-500/10 text-amber-200 border border-amber-500/30 rounded-xl px-3 py-2 mb-2 text-xs"><span>{notice}</span><button onClick={()=>setNotice('')} aria-label="Dismiss"><Icon name="x" size={14}/></button></div>}
           {attachments.length>0&&<div className="flex gap-2 overflow-x-auto thin-scroll pb-2">{attachments.map(a=><div key={a.id} className="flex shrink-0 items-center gap-2 max-w-52 border border-slate-700 rounded-lg p-1.5 bg-slate-900">{a.type==='image'?<img src={a.dataUrl} className="h-9 w-9 object-cover rounded" alt={a.name}/>:<Icon name="file" size={19} className="text-indigo-400"/>}<span className="text-[11px] truncate max-w-28" title={a.name}>{a.name}</span><button className="text-slate-400 hover:text-white" aria-label={`Remove ${a.name}`} onClick={()=>setAttachments(xs=>xs.filter(x=>x.id!==a.id))}><Icon name="x" size={14}/></button></div>)}</div>}
-          <div className="flex items-center justify-between pb-2 gap-2"><button className="search-toggle" type="button" aria-pressed={webEnabled} aria-label={webEnabled?'Disable web search':'Enable web search'} onClick={()=>setSettings(s=>({...s,search:{...s.search,enabled:!s.search.enabled}}))}><Icon name="globe" size={15}/> Web {webEnabled?'on':'off'} · AI tools</button>
-            <div className="text-[10px] text-emerald-300 text-right">{settings.provider==='demo'||settings.provider==='ollama'?'Local · no API bill':`Local cap: ${counted(settings.provider).day}/${LOCAL_CAPS[settings.provider]?.day||'∞'} today`}{webEnabled&&` · search ${counted('tavily').month}/900`}</div></div>
-          <div className="flex items-end gap-2 rounded-2xl bg-slate-900 border border-slate-700 focus-within:border-indigo-500/80 p-2 shadow-xl shadow-black/20">
+          <div className="flex items-end gap-1 sm:gap-2 rounded-2xl bg-slate-900 border border-slate-700 focus-within:border-indigo-500/80 p-2 shadow-xl shadow-black/20">
             <input type="file" ref={fileRef} className="hidden" multiple accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.txt,.md,.json,.jsonl,.js,.jsx,.ts,.tsx,.py,.cs,.html,.css,.xml,.csv,.yaml,.yml,.java,.go,.rs,.sql,.sh,.ps1,.cpp,.c,.log,.toml,.ini,.conf,.kt,.dart" onChange={e=>attachFiles([...e.target.files])}/>
             <button className="shrink-0 h-10 w-10 grid place-items-center rounded-xl text-slate-400 hover:bg-slate-800 hover:text-indigo-300 disabled:opacity-40" disabled={reading} title="Attach images, PDF, text or code" aria-label="Add attachment" onClick={()=>fileRef.current?.click()}><Icon name="paperclip" size={20}/></button>
+            <button className="search-toggle" type="button" aria-pressed={webEnabled} aria-label={webEnabled?'Disable web search':'Enable web search'} title={webEnabled?'Web search is ON · Tap to disable':'Web search is OFF · Tap to enable'} onClick={()=>setSettings(current=>({...current,search:{...current.search,enabled:!current.search.enabled}}))}><Icon name="globe" size={19}/></button>
             <textarea ref={inputRef} rows="1" className="composer-text thin-scroll w-full min-w-0 bg-transparent px-1.5 py-2.5 text-sm leading-6 outline-none placeholder:text-slate-500" value={draft} onChange={e=>{setDraft(e.target.value);e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,170)+'px';}} placeholder={reading?'Reading attachment…':'Ask anything…'} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();send();}}}/>
             {busy?<button className="btn btn-soft !p-2.5 shrink-0 !bg-rose-500/20 !text-rose-300" title="Stop generation" aria-label="Stop generation" onClick={stop}><Icon name="stop" size={20}/></button>:<button className="btn btn-primary !p-2.5 shrink-0" title="Send" aria-label="Send message" disabled={reading||(!draft.trim()&&!attachments.length)} onClick={send}><Icon name="send" size={20}/></button>}
           </div>
-          <p className="text-center text-[10px] text-slate-500 mt-2">{reading?'Extracting file contents…':busy?'Searching/generating · Stop to cancel':webEnabled?'AI-controlled Tavily search (max 3) · Free-use caps active':'Free-only · Browser counters are NOT provider billing guarantees · Enter to send'}</p>
+          <p className="text-center text-[10px] text-slate-500 mt-2">{reading?'Extracting file contents…':busy?'Generating · Stop to cancel':webEnabled?'Web on · Tavily '+counted('tavily').month+'/900 free-use browser counter':'Web off · Free-only browser counters are not billing guarantees'}</p>
         </div>
       </div>
     </main>
