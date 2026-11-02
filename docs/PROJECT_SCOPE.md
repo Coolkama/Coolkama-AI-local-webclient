@@ -60,6 +60,15 @@ When adding file features, prefer the browser File API for explicit selection an
 - Replace the text-heavy Web toggle above the composer with a compact, labelled, accessible globe icon immediately next to the file-attachment button, with clearly distinguishable on/off states.
 - Preserve free-only guards, provider rotation, model tool support, diagnostics and other product boundaries.
 
+## Model-controlled page extraction
+
+- Offer `web_open(index)` in addition to `web_search(query, time_range?)`. Only accept a validated 1-based index of a Tavily search result already returned **within the current user turn**. Never allow the model to choose an arbitrary URL or make browser requests to random websites.
+- Implement using Tavily's **Basic Extract** endpoint only, no Advanced depth, paid proxy or fallback. The model can open at most three unique result pages per turn; the existing search budget remains separately limited to one to three searches. Reuse successfully opened pages without paying for duplicate extraction.
+- Check and reserve the free plan local Tavily allowance before every extract. Count **one conservative local credit per attempted Basic Extract call**, even though Tavily presently charges one credit per five successful URLs. Share the existing 900/month Tavily counter with Basic searches, and check that a continuation LLM request remains possible before executing a model-requested tool.
+- Pass at most 18,000 characters of extracted text to the model for one open; retain up to 12,000 characters of opened evidence per source in chat history for later follow-up questions. Full Trace can capture the actual raw extraction response. Mark truncation accurately.
+- Show opened pages inside the existing collapsed web-activity UI, preserving search results and links. Treat extracted page text as untrusted evidence. Extraction failures and dynamic page omissions must be visible to the model and in diagnostics; do not invent missing content.
+- Preserve OpenRouter rotating free models, Groq free-tool error handling, browser-only deployment and existing security safeguards.
+
 ## Groq follow-up tool validation
 
 - A Groq model may emit invalid local tool arguments after a valid search; the API may then send a `tool_use_failed` error as a streaming event with initial HTTP 200. Preserve the error code in diagnostics.
