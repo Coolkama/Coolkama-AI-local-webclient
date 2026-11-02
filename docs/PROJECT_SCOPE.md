@@ -53,6 +53,14 @@ When adding file features, prefer the browser File API for explicit selection an
 - Ollama may be used as a local inference endpoint where browser connectivity is supported.
 - Offline/mock test mode should remain available.
 
+## Local diagnostics
+
+- Normal, Detailed and opt-in Full Trace modes are available in the browser UI. Diagnostics are for troubleshooting provider/model selection, streaming, search and tool orchestration, and do not change inference or search behaviour.
+- Full Trace preserves actual model/search request and response payloads, including message history, extracted documents, image data and raw streaming events, **locally in IndexedDB**. Compact metadata is stored in localStorage. No remote log collector is used.
+- Redact authentication headers, provider keys and other recognisable credentials. Never write keys into exported logs. Exports may contain other personal information, so explicitly warn the user to inspect before sharing.
+- Allow JSON exports for the current chat or all logs. Use bounded rolling retention; local browser storage is not unlimited. Clearing logs removes both localStorage index events and IndexedDB full records.
+- An exported log must reveal when Full Trace data could not be stored/retrieved; do not silently pretend that a partial trace is complete.
+
 ## GitHub repository resource policy
 
 Use this repository for **source code, documentation, commits and version history**. The owner has disabled GitHub Actions and does not want usage or charges from CI, Actions minutes, build artefacts, caches, package hosting, Codespaces or Git LFS. Do not introduce those services, their workflows or generated assets without an explicit change of policy.
