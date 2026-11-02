@@ -190,48 +190,149 @@ function diagSafe(value,depth=0){
   }
   return String(value);
 }
+// Full Trace keeps actual request and response data in IndexedDB, not localStorage.
+// Only credentials/authentication material are removed; content and binary image strings remain intact.
+const DIAG_DB='llm-workbench-full-traces-v1';
+let diagDbPromise=null,diagPending=Promise.resolve(),diagArchiveError='';
+function diagRawSafe(value,depth=0,seen=new WeakSet()){
+  if(depth>36)return '[Excessive nesting]';
+  if(typeof value==='string')return value
+    .replace(/sk-or-v1-[a-z0-9_-]{10,}|gsk_[a-z0-9_-]{12,}|tvly-[a-z0-9_-]{8,}|AIza[a-z0-9_-]{25,}|gh[pousr]_[a-z0-9_-]{12,}/gi,'[REDACTED CREDENTIAL]')
+    .replace(/Bearer\s+[a-z0-9._~+/-]+/gi,'Bearer [REDACTED]');
+  if(value===null||typeof value==='number'||typeof value==='boolean')return value;
+  if(Array.isArray(value))return value.map(v=>diagRawSafe(v,depth+1,seen));
+  if(typeof value==='object'){
+    if(seen.has(value))return '[Circular object]';
+    seen.add(value);
+    const out={};
+    for(const [k,v] of Object.entries(value)){
+      if(/^(authorization|proxy-authorization|api.?key|password|secret|key|access.?token|refresh.?token|cookie|set-cookie|x-api-key)$/i.test(k)){
+        out[k]='[REDACTED]';
+      }else out[k]=diagRawSafe(v,depth+1,seen);
+    }
+    seen.delete(value);
+    return out;
+  }
+  return String(value);
+}
+function diagOpenDb(){
+  if(diagDbPromise)return diagDbPromise;
+  diagDbPromise=new Promise((resolve,reject)=>{
+    if(!('indexedDB' in window)){reject(new Error('IndexedDB is unavailable'));return;}
+    const request=indexedDB.open(DIAG_DB,1);
+    request.onupgradeneeded=()=>{
+      if(!request.result.objectStoreNames.contains('full'))request.result.createObjectStore('full',{keyPath:'id'});
+    };
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error||new Error('Unable to open IndexedDB'));
+    request.onblocked=()=>reject(new Error('IndexedDB upgrade blocked by another tab'));
+  }).catch(e=>{diagDbPromise=null;throw e;});
+  return diagDbPromise;
+}
+async function diagArchive(record,rawData,keepIds){
+  const db=await diagOpenDb();
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction('full','readwrite'),store=tx.objectStore('full');
+    store.put({id:record.id,data:diagRawSafe(rawData)});
+    const keys=store.getAllKeys();
+    keys.onsuccess=()=>{
+      const keep=new Set(keepIds);
+      for(const key of keys.result)if(!keep.has(key))store.delete(key);
+    };
+    tx.oncomplete=resolve;
+    tx.onerror=()=>reject(tx.error||new Error('IndexedDB write failed'));
+    tx.onabort=()=>reject(tx.error||new Error('IndexedDB transaction aborted'));
+  });
+}
+async function diagArchiveRead(ids){
+  if(!ids.length)return new Map();
+  const db=await diagOpenDb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction('full','readonly'),store=tx.objectStore('full'),result=new Map();
+    for(const id of ids){
+      const q=store.get(id);
+      q.onsuccess=()=>{if(q.result)result.set(id,q.result.data);};
+    }
+    tx.oncomplete=()=>resolve(result);
+    tx.onerror=()=>reject(tx.error||new Error('Unable to read full traces'));
+  });
+}
+async function diagArchiveClear(){
+  if(!('indexedDB' in window))return;
+  const db=await diagOpenDb();
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction('full','readwrite');
+    tx.objectStore('full').clear();
+    tx.oncomplete=resolve;
+    tx.onerror=()=>reject(tx.error||new Error('Unable to clear full traces'));
+  });
+}
 function diagTraceMessages(messages){
-  return (messages||[]).map(m=>({
-    role:m.role,
-    content:diagSafe(m.content),
-    ...(m.tool_call_id?{tool_call_id:m.tool_call_id}:{}),
-    ...(m.tool_calls?{tool_calls:diagSafe(m.tool_calls)}:{})
-  }));
+  // Retains exactly the model-visible contents, including selected documents and image data.
+  return diagRawSafe(messages||[]);
 }
 function diagLog(level,type,data={},ctx={}){
   if(diagLevels.indexOf(diagLevel())<diagLevels.indexOf(level))return;
+  const full=level==='full';
   const record={id:uid(),at:new Date().toISOString(),level,type,
     chatId:ctx.chatId||null,turnId:ctx.turnId||null,round:ctx.round||null,
-    data:diagSafe(data)};
-  const raw=JSON.stringify(record);
-  if(raw.length>48000)record.data={note:'Event exceeded 48 KB; payload omitted',bytes:raw.length};
+    data:full?{location:'IndexedDB',note:'Full payload preserved for JSON download',fields:Object.keys(data)}:diagSafe(data)};
+  if(!full){
+    const raw=JSON.stringify(record);
+    if(raw.length>48000)record.data={note:'Large event abbreviated in rolling log',bytes:raw.length};
+  }
   const records=[...diagRead(),record].slice(-DIAG_EVENT_LIMIT);
   while(records.length>1&&JSON.stringify(records).length>DIAG_SIZE_LIMIT)records.shift();
   diagnosticMemory=records;
   try{localStorage.setItem(DIAG_KEY,JSON.stringify(records));diagStorageError=false;}
   catch{diagStorageError=true;}
+  if(full){
+    const ids=records.map(r=>r.id);
+    diagPending=diagPending.then(()=>diagArchive(record,data,ids)).then(()=>{
+      diagArchiveError='';
+    }).catch(e=>{
+      diagArchiveError=String(e.message||e);
+      window.dispatchEvent(new Event(DIAG_EVENT));
+    });
+  }
   try{window.dispatchEvent(new Event(DIAG_EVENT));}catch{}
 }
 function diagClear(){
   diagnosticMemory=[];
   try{localStorage.removeItem(DIAG_KEY);diagStorageError=false;}catch{diagStorageError=true;}
+  // Keep operations ordered: a pending full write must never restore a cleared trace.
+  diagPending=diagPending.then(()=>diagArchiveClear()).then(()=>{diagArchiveError='';}).catch(e=>{
+    diagArchiveError=String(e.message||e);
+    window.dispatchEvent(new Event(DIAG_EVENT));
+  });
   window.dispatchEvent(new Event(DIAG_EVENT));
 }
-function diagExport(chatId=null){
+async function diagExport(chatId=null){
   const records=diagRead().filter(e=>!chatId||e.chatId===chatId);
-  const payload={format:'Coolkama LLM Workbench diagnostics',schemaVersion:1,
+  await diagPending;
+  const ids=records.filter(e=>e.level==='full').map(e=>e.id);
+  let saved=new Map(),readError=null;
+  try{saved=await diagArchiveRead(ids);}
+  catch(e){readError=e.message||String(e);}
+  const events=records.map(e=>e.level==='full'?{
+    ...e,
+    data:saved.has(e.id)?saved.get(e.id):{
+      error:'Full trace was unavailable in IndexedDB',
+      detail:readError||diagArchiveError||'Record missing'
+    }
+  }:e);
+  const payload={format:'Coolkama LLM Workbench diagnostics',schemaVersion:2,
     exportedAt:new Date().toISOString(),level:diagLevel(),scope:chatId?'conversation':'all',
-    disclosure:'Only user-requested downloads. May contain user text, queries and web excerpts. Credential redaction is best-effort; inspect before sharing.',
-    events:records};
+    disclosure:'Export remains local until you share it. Full Trace can contain messages, documents, images and search results. Authentication credentials are redacted on a best-effort basis. Inspect before sharing.',
+    traceErrors:readError||diagArchiveError||null,events};
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob),a=document.createElement('a');
   const stamp=new Date().toISOString().replace(/[:.]/g,'-');
   a.href=url;a.download='coolkama-diagnostics-'+(chatId?'chat-':'all-')+stamp+'.json';
   document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
-  diagLog('normal','diagnostics-export',{scope:chatId?'conversation':'all',exportedEvents:records.length},{chatId});
+  diagLog('normal','diagnostics-export',{scope:chatId?'conversation':'all',exportedEvents:records.length,bytes:blob.size},{chatId});
 }
-
 const PDF_WORKER = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER;
 
@@ -423,10 +524,12 @@ async function tavilySearch(query,key,count,signal,trace={}) {
   const time=performance.now();
   diagLog('normal','search-request',{tool:'web_search',engine:'tavily',depth:'basic',maxResults:count},{...trace});
   diagLog('detailed','search-query',{query},{...trace});
+  const body={query,search_depth:'basic',max_results:Math.min(10,Math.max(1,Number(count)||4)),include_answer:false,include_raw_content:false,include_images:false};
+  diagLog('full','tavily-request-payload',{url:'https://api.tavily.com/search',body},trace);
   const response=await fetch('https://api.tavily.com/search',{
     method:'POST', signal,
     headers:{'Content-Type':'application/json',Authorization:'Bearer '+key.trim()},
-    body:JSON.stringify({query,search_depth:'basic',max_results:Math.min(10,Math.max(1,Number(count)||4)),include_answer:false,include_raw_content:false,include_images:false})
+    body:JSON.stringify(body)
   });
   diagLog('normal','search-http',{status:response.status,elapsedMs:Math.round(performance.now()-time)},trace);
   if(!response.ok) {
@@ -435,6 +538,7 @@ async function tavilySearch(query,key,count,signal,trace={}) {
     throw new Error(`Web search failed (${response.status}): ${reason}`);
   }
   const json=await response.json();
+  diagLog('full','tavily-raw-response',{response:json},trace);
   const sources=normalizeSources(json.results);
   diagLog('normal','search-results',{count:sources.length,elapsedMs:Math.round(performance.now()-time)},trace);
   diagLog('detailed','search-evidence',{query,results:sources.map(s=>({title:s.title,url:s.url,snippet:s.content}))},trace);
@@ -497,7 +601,7 @@ function endpointUrl(base) {
 async function streamChat({provider, profile, temperature, messages, signal, onToken, onSources, toolsEnabled=false, trace={}}) {
   const began=performance.now();let firstTokenMs=null,chunkCount=0,sseEvents=0,actualModel=null,usage=null;
   diagLog('normal','llm-request',{provider,requestedModel:profile.model,round:trace.round,toolsEnabled,messages:messages.length,maxTokens:2048},trace);
-  diagLog('full','llm-request-messages',{messages:diagTraceMessages(messages)},trace);
+  // Full request is logged below after the exact payload has been constructed.
   const headers={'Content-Type':'application/json'};
   if(provider !== 'ollama') headers.Authorization=`Bearer ${profile.key.trim()}`;
   if(provider==='openrouter') {headers['HTTP-Referer']=location.origin==='null'?'https://openrouter.ai':location.origin;headers['X-Title']='LLM Workbench';}
@@ -508,6 +612,7 @@ async function streamChat({provider, profile, temperature, messages, signal, onT
     if(provider==='openrouter'||provider==='groq')payload.parallel_tool_calls=false;
   }
   // Only the browser-owned function schema is allowed. No billable hosted tools or plugins.
+  diagLog('full','llm-request-payload',{url:endpointUrl(profile.url),payload:diagTraceMessages([payload])[0]},trace);
   const res=await fetch(endpointUrl(profile.url),{
     method:'POST',headers,signal,body:JSON.stringify(payload)
   });
@@ -561,18 +666,20 @@ async function streamChat({provider, profile, temperature, messages, signal, onT
     const json=await res.json();
     if(json.error)throw new Error(json.error.message||JSON.stringify(json.error));
     actualModel=json.model||null;usage=json.usage||null;
+    diagLog('full','llm-raw-json-response',{response:json},trace);
     ingestChoice(json.choices?.[0]);
     onSources?.(normalizeSources(json.choices?.[0]?.message?.annotations));
     return finish();
   }
   const reader=res.body.getReader(),decoder=new TextDecoder();
-  let buffer='',complete=false;
+  let buffer='',complete=false,rawSse=diagLevel()==='full'?[]:null;
   function processEvent(event) {
     const lines=event.split(/\r?\n/).filter(x=>x.startsWith('data:')).map(x=>x.slice(5).trimStart());
     if(!lines.length)return;
     const data=lines.join('\n').trim();
     if(data==='[DONE]'){complete=true;return;}
     if(!data)return;
+    if(rawSse)rawSse.push(data);
     let obj;
     try {obj=JSON.parse(data);}catch{return;}
     if(obj.error)throw new Error(obj.error.message||JSON.stringify(obj.error));
@@ -596,7 +703,10 @@ async function streamChat({provider, profile, temperature, messages, signal, onT
     }
     buffer+=decoder.decode();
     if(buffer.trim()&&!complete)processEvent(buffer);
-  } finally {try{await reader.cancel();}catch{}reader.releaseLock();}
+  } finally {
+    if(rawSse)diagLog('full','llm-raw-sse-events',{events:rawSse,partial:!complete},trace);
+    try{await reader.cancel();}catch{}reader.releaseLock();
+  }
   return finish();
 }
 const wait = (ms,signal) => new Promise((resolve,reject) => {
@@ -671,7 +781,7 @@ function DiagnosticsPanel({chatId,onClose}){
   },[]);
   const all=diagRead(),shown=onlyChat?all.filter(e=>e.chatId===chatId):all;
   function selectLevel(next){
-    if(next==='full'&&!window.confirm('Full Trace saves conversation text and model output. Keys, image data and uploaded document content are excluded, but other private information may still appear. Enable Full Trace?'))return;
+    if(next==='full'&&!window.confirm('Full Trace saves COMPLETE model and search request/response data, including selected documents, images and conversation text, in browser IndexedDB. API credentials are omitted. Large traces may use substantial device storage. Enable Full Trace?'))return;
     diagSetLevel(next);setLevel(next);
   }
   function deleteLog(){
@@ -686,7 +796,7 @@ function DiagnosticsPanel({chatId,onClose}){
       </div>
       <div className="overflow-y-auto thin-scroll p-4 sm:p-5 space-y-4">
         <div className="border border-amber-700/50 rounded-xl p-3 text-xs text-amber-100 leading-5">
-          <strong>Privacy:</strong> Logs remain in this browser and are downloaded only when you choose. API keys, headers, images and uploaded document contents are excluded. Detailed logs include search queries and excerpts; Full Trace additionally includes conversation text and model output. Redaction is best-effort: inspect exports before sharing. No external diagnostics service is used.
+          <strong>Privacy:</strong> Logs stay in this browser and are only exported on request. Normal/Detailed events remain compact; Full Trace preserves complete model/search request and response payloads, including conversation, uploaded documents and image data, in IndexedDB. Authentication credentials are redacted. Exports may contain private information: inspect before sharing. No diagnostics data is uploaded automatically.
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="text-xs font-medium text-slate-300">Recording level
@@ -708,8 +818,9 @@ function DiagnosticsPanel({chatId,onClose}){
           <button className="btn btn-soft !text-xs" onClick={()=>diagExport()} disabled={!all.length}><Icon name="download" size={15}/> Save all logs</button>
           <button className="btn btn-soft !text-xs text-rose-300" onClick={deleteLog} disabled={!all.length}><Icon name="trash" size={15}/> Clear</button>
         </div>
-        {diagStorageError&&<p className="text-xs text-rose-300 border border-rose-700/40 rounded-lg p-2">Browser storage is full or blocked. These logs remain available for download in this tab but may not survive a reload. Download them now if needed.</p>}
-        <div className="flex justify-between items-center text-[11px] text-slate-400"><span>{shown.length} displayed · {all.length} stored</span><span>Maximum {DIAG_EVENT_LIMIT} events / 650 KB</span></div>
+        {diagStorageError&&<p className="text-xs text-rose-300 border border-rose-700/40 rounded-lg p-2">Compact browser log storage is full or blocked. Events may not survive a reload. Download a copy.</p>}
+        {diagArchiveError&&<p className="text-xs text-rose-300 border border-rose-700/40 rounded-lg p-2">Full Trace IndexedDB error: {diagArchiveError}. Complete payloads may be unavailable; check exported traceErrors.</p>}
+        <div className="flex justify-between items-center text-[11px] text-slate-400"><span>{shown.length} displayed · {all.length} stored</span><span>Up to {DIAG_EVENT_LIMIT} events · compact index 650 KB · Full payloads in IndexedDB</span></div>
         <div className="space-y-2">
           {!shown.length?<div className="rounded-xl border border-slate-800 p-5 text-center text-xs text-slate-400">No diagnostic events for this view yet. Send a message to capture a trace.</div>:shown.slice().reverse().slice(0,100).map(event=><details key={event.id} className="border border-slate-800 rounded-xl bg-slate-900/60 px-3 py-2 text-xs">
             <summary className="cursor-pointer flex flex-wrap gap-2 items-center justify-between">
