@@ -1862,7 +1862,11 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
       setModelError(`${unique.length} free-only model(s) available. Paid/unknown models were hidden.`);
     } catch(e) {
       diagLog('normal','model-discovery-error',{provider,message:e.message||String(e)},discoveryTrace);
-      setModelError(e.message+' · Check free-tier access, URL, key and CORS.');
+      const message=String(e.message||e);
+      const guidance=/none passed the verified free chat-model filter|returned no models/i.test(message)
+        ?' · Existing model selections remain available.'
+        :' · Check API key, endpoint access, browser CORS and free-tier project.';
+      setModelError(message+guidance);
     }
     finally {setLoadingModels(false);}
   }
