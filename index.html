@@ -86,7 +86,7 @@
 <div id="root"></div>
 <script type="text/babel">
 const {useState, useEffect, useLayoutEffect, useRef, useMemo} = React;
-const APP_BUILD = '2026-11-03-provider-adapters-v2';
+const APP_BUILD = '2026-11-03-reasoning-visibility-v3';
 const STORAGE_KEY = 'llm-workbench-v1';
 const USAGE_KEY = 'llm-workbench-free-only-usage-v1';
 // These are deliberately conservative CLIENT-ONLY stops, NOT the providers' real quotas.
@@ -1298,8 +1298,9 @@ async function retryPrefillAsFollowup({provider,profile,history,previous,instruc
   if(!joined.addedChars)throw new Error('Follow-up continuation returned no new text.');
   return {response,joined,windowed};
 }
-async function streamChat({provider, profile, temperature, messages, signal, onToken, onSources, toolsEnabled=false, toolDefinitions=WEB_SEARCH_TOOLS, finalOnly=false, trace={}}) {
+async function streamChat({provider, profile, temperature, messages, signal, onToken, onSources, onReasoning, toolsEnabled=false, toolDefinitions=WEB_SEARCH_TOOLS, finalOnly=false, trace={}}) {
   const began=performance.now();let firstTokenMs=null,chunkCount=0,sseEvents=0,actualModel=null,usage=null;
+  let reasoningChars=0,reasoningChunks=0,reasoningLastNotice=0;
   const maxTokens=outputTokenLimit(profile);
   diagLog('normal','llm-request',{provider,requestedModel:profile.model,round:trace.round,toolsEnabled,finalOnly,messages:messages.length,maxTokens},trace);
   // Full request is logged below after the exact payload has been constructed.
@@ -1364,6 +1365,26 @@ async function streamChat({provider, profile, temperature, messages, signal, onT
     const found=normalizeSources([...(delta.annotations||[]),...(choice.message?.annotations||[])]);
     if(found.length)onSources?.(found);
     ingestContent(delta.content);
+    // Some free OpenRouter models stream only private reasoning for minutes
+    // before their first visible answer. Show activity metadata, never the
+    // actual reasoning text, and throttle UI callbacks for mobile devices.
+    const reasoning=typeof delta.reasoning==='string'?delta.reasoning:
+      Array.isArray(delta.reasoning_details)?
+        delta.reasoning_details.map(x=>typeof x?.text==='string'?x.text:'').join(''):'';
+    if(reasoning){
+      reasoningChars+=reasoning.length;reasoningChunks++;
+      const elapsed=performance.now()-began;
+      if(reasoningChunks===1||elapsed-reasoningLastNotice>=600){
+        reasoningLastNotice=elapsed;
+        onReasoning?.({chars:reasoningChars,chunks:reasoningChunks,model:actualModel||profile.model,
+          elapsedMs:Math.round(elapsed)});
+        if(reasoningChunks===1||reasoningChunks%350===0)
+          diagLog('normal','llm-reasoning-progress',{
+            chars:reasoningChars,chunks:reasoningChunks,model:actualModel||profile.model,
+            elapsedMs:Math.round(elapsed)
+          },trace);
+      }
+    }
     if(delta.extra_content)assistantExtra=mergeProviderExtra(assistantExtra,delta.extra_content);
     // OpenRouter explicitly requires reasoning_details to be echoed unchanged
     // during multi-step tool calls. Streaming chunks are concatenated in order.
@@ -1379,7 +1400,7 @@ async function streamChat({provider, profile, temperature, messages, signal, onT
     const promptTokens=typeof usage?.prompt_tokens==='number'?usage.prompt_tokens:null;
     const cachedTokens=typeof usage?.prompt_tokens_details?.cached_tokens==='number'
       ?usage.prompt_tokens_details.cached_tokens:null;
-    const info={requestedModel:profile.model,actualModel:actualModel||null,finishReason:finishReason||'not reported',toolCalls:toolCalls.length,contentChars:content.length,contentChunks:chunkCount,sseEvents,firstTokenMs,durationMs:Math.round(performance.now()-began),usage,
+    const info={requestedModel:profile.model,actualModel:actualModel||null,finishReason:finishReason||'not reported',toolCalls:toolCalls.length,contentChars:content.length,contentChunks:chunkCount,reasoningChunks,reasoningChars,sseEvents,firstTokenMs,durationMs:Math.round(performance.now()-began),usage,
       promptTokens,cachedTokens,cacheHitPercent:promptTokens>0&&cachedTokens!==null
         ?Math.round(cachedTokens/promptTokens*1000)/10:null};
     diagLog('normal','llm-round-end',info,trace);
@@ -1563,7 +1584,12 @@ function Message({message,streaming,onContinue,canContinue=false}) {
           </div>
         </details>}
         {!user&&message.citationAudit&&(message.citationAudit.unverifiedUrls?.length>0||message.citationAudit.invalidRefs?.length>0||message.citationAudit.noTraceableCitations)&&<div className="mb-3 rounded-lg border border-amber-700/60 bg-amber-950/20 p-3 text-xs text-amber-100 space-y-1"><strong>Citation check</strong>{message.citationAudit.unverifiedUrls?.length>0&&<p>{message.citationAudit.unverifiedUrls.length} URL(s) in the answer were not returned by the web tools. These links are unverified, not retrieved evidence.</p>}{message.citationAudit.invalidRefs?.length>0&&<p>Unknown source references: {message.citationAudit.invalidRefs.map(n=>'['+n+']').join(', ')}.</p>}{message.citationAudit.noTraceableCitations&&<p>The answer includes no traceable source citations. The retrieved sources below do not independently verify its claims.</p>}{message.citationAudit.unverifiedUrls?.length>0&&<details><summary className="cursor-pointer">Unverified URLs</summary><ul className="list-disc ml-4 mt-2 space-y-1">{message.citationAudit.unverifiedUrls.map(url=><li key={url} className="break-all">{url}</li>)}</ul></details>}</div>}
-        {message.content ? (user?<div className="whitespace-pre-wrap break-words text-[14px] leading-7 text-slate-100">{message.content}</div>:<Markdown text={message.content}/>) : (streaming?<div className="flex gap-1 py-2">{[0,1,2].map(i=><span key={i} className="w-1.5 h-1.5 bg-indigo-400 rounded-full stream-dot" style={{animationDelay:`${i*0.18}s`}}/>)}</div>:null)}
+        {!user&&streaming&&message.reasoningProgress&&!message.content&&<div className="mb-3 text-xs text-indigo-200 flex flex-wrap items-center gap-2" role="status" aria-live="polite">
+          <span className="w-2 h-2 bg-indigo-400 rounded-full stream-dot"/>
+          <span>Model reasoning · {message.reasoningProgress.model||'selected free model'}</span>
+          <span className="text-slate-400">{Number(message.reasoningProgress.chars||0).toLocaleString('en-GB')} reasoning characters received · awaiting answer</span>
+        </div>}
+        {message.content ? (user?<div className="whitespace-pre-wrap break-words text-[14px] leading-7 text-slate-100">{message.content}</div>:<Markdown text={message.content}/>) : (streaming&&!message.reasoningProgress?<div className="flex gap-1 py-2">{[0,1,2].map(i=><span key={i} className="w-1.5 h-1.5 bg-indigo-400 rounded-full stream-dot" style={{animationDelay:`${i*0.18}s`}}/>)}</div>:null)}
         {(message.attachments||[]).length>0&&<div className="flex flex-wrap gap-2 mt-2">{message.attachments.map(a=>a.type==='image'?<div key={a.id} className="relative"><img src={a.dataUrl} alt={a.name} title={a.name} className="w-24 h-24 md:w-32 md:h-32 object-cover rounded-xl border border-slate-600"/></div>:<div key={a.id} title={a.name} className="max-w-full flex items-center gap-1.5 text-xs text-slate-300 bg-slate-800 border border-slate-700 px-2.5 py-2 rounded-lg"><Icon name="file" size={15}/><span className="truncate max-w-44">{a.name}</span>{a.truncated&&<span className="text-amber-400">(partial)</span>}</div>)}</div>}
         {message.status==='error'&&<div className="mt-2 text-xs text-rose-400 break-words">{message.error||'Request failed'}</div>}
         {message.status==='stopped'&&<div className="mt-2 text-xs text-amber-400">Generation stopped</div>}
@@ -2075,7 +2101,9 @@ function App() {
           };
           let response;
           try {
-            response=await streamChatWithRateWait({provider,profile:config,temperature:settings.temperature,messages:requestMessages,signal:controller.signal,onToken:roundToken,onSources:addSources,toolsEnabled:canUseWebTools,toolDefinitions:availableTools,trace:roundCtx},()=>setUsageRevision(v=>v+1));
+            response=await streamChatWithRateWait({provider,profile:config,temperature:settings.temperature,messages:requestMessages,signal:controller.signal,onToken:roundToken,onSources:addSources,
+              onReasoning:progress=>patchAssistant({reasoningProgress:progress}),
+              toolsEnabled:canUseWebTools,toolDefinitions:availableTools,trace:roundCtx},()=>setUsageRevision(v=>v+1));
           }catch(error){
             // A rare Groq streaming 429 can arrive after partial visible text.
             // Never replay the same request (which would duplicate tokens); instead
@@ -2380,7 +2408,7 @@ function App() {
       }
       paint();
       const citationAudit=searchMode&&!incomplete?auditAnswerCitations(output,allSources):null;
-      patchAssistant({content:output||'(The model returned no text.)',status:incomplete?'incomplete':'done',incompleteReason,continuationError:continuationFailure,searchStatus:null,searchingWeb:false,citationAudit});
+      patchAssistant({content:output||'(The model returned no text.)',status:incomplete?'incomplete':'done',incompleteReason,continuationError:continuationFailure,searchStatus:null,searchingWeb:false,reasoningProgress:null,citationAudit});
       if(citationAudit){
         diagLog('normal','citation-audit',{retrievedSources:citationAudit.retrievedSources,citedUrls:citationAudit.citedUrls,numericCitations:citationAudit.numericCitations,unverifiedUrls:citationAudit.unverifiedUrls.length,invalidRefs:citationAudit.invalidRefs,noTraceableCitations:citationAudit.noTraceableCitations},diagCtx);
         diagLog('detailed','citation-audit-details',citationAudit,diagCtx);
@@ -2390,7 +2418,7 @@ function App() {
     } catch(e) {
       const stopped=e.name==='AbortError';
       diagLog('normal',stopped?'turn-aborted':'turn-error',{message:stopped?'User cancelled':(e.message||String(e)),type:e.name||'Error'},diagCtx);
-      patchAssistant({content:output,status:stopped?'stopped':'error',searchStatus:null,searchingWeb:false,error:stopped?'':(e.message||String(e))});
+      patchAssistant({content:output,status:stopped?'stopped':'error',searchStatus:null,searchingWeb:false,reasoningProgress:null,error:stopped?'':(e.message||String(e))});
       if(!stopped&&e instanceof TypeError)setNotice('Network/CORS error. Check provider URL, CORS policy and browser console.');
     } finally {workRef.current=null;setBusy(null);}
   }
