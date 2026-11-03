@@ -955,7 +955,9 @@ function estimatedContextTokens(value){
 }
 function contextMessageTokens(message){
   return 12+estimatedContextTokens(message.content)+
-    (message.tool_calls?Math.ceil(JSON.stringify(message.tool_calls).length/3):0);
+    (message.tool_calls?Math.ceil(JSON.stringify(message.tool_calls).length/3):0)+
+    (message.reasoning_details?Math.ceil(JSON.stringify(message.reasoning_details).length/3):0)+
+    (message.extra_content?Math.ceil(JSON.stringify(message.extra_content).length/3):0);
 }
 function contextTrimText(value,maxChars){
   const original=String(value||'');
@@ -1177,6 +1179,8 @@ function apiMessages(thread, systemPrompt, provider) {
         const entry={role:'assistant',content:previous};
         if(provider==='gemini'&&m.providerTag==='gemini'&&m.providerExtraContent)
           entry.extra_content=m.providerExtraContent;
+        if(provider==='openrouter'&&m.providerTag==='openrouter'&&Array.isArray(m.reasoningDetails)&&m.reasoningDetails.length)
+          entry.reasoning_details=m.reasoningDetails;
         history.push(entry);
       }
       continue;
@@ -1334,7 +1338,7 @@ async function streamChat({provider, profile, temperature, messages, signal, onT
     throw failure;
   }
   const calls=new Map();
-  let content='',finishReason=null,assistantExtra=null;
+  let content='',finishReason=null,assistantExtra=null,reasoningDetails=[];
   const ingestContent=part=>{
     const token=t=>{if(firstTokenMs===null){firstTokenMs=Math.round(performance.now()-began);diagLog('normal','llm-first-token',{elapsedMs:firstTokenMs,model:actualModel||'not reported'},trace);}chunkCount++;content+=t;onToken(t);};
     if(typeof part==='string'&&part)token(part);
@@ -1361,6 +1365,12 @@ async function streamChat({provider, profile, temperature, messages, signal, onT
     if(found.length)onSources?.(found);
     ingestContent(delta.content);
     if(delta.extra_content)assistantExtra=mergeProviderExtra(assistantExtra,delta.extra_content);
+    // OpenRouter explicitly requires reasoning_details to be echoed unchanged
+    // during multi-step tool calls. Streaming chunks are concatenated in order.
+    if(Array.isArray(delta.reasoning_details)){
+      if(choice.message)reasoningDetails=[...delta.reasoning_details];
+      else reasoningDetails.push(...delta.reasoning_details);
+    }
     if(Array.isArray(delta.tool_calls))delta.tool_calls.forEach((v,i)=>ingestCall(v,i,!!choice.message));
     if(choice.finish_reason)finishReason=choice.finish_reason;
   };
@@ -1375,7 +1385,7 @@ async function streamChat({provider, profile, temperature, messages, signal, onT
     diagLog('normal','llm-round-end',info,trace);
     diagLog('detailed','llm-tool-calls',{calls:toolCalls.map(x=>({id:x.id,name:x.function?.name,arguments:x.function?.arguments}))},trace);
     diagLog('full','llm-response-content',{content},trace);
-    return {content,toolCalls,finishReason,actualModel,usage,extraContent:assistantExtra,metrics:info};
+    return {content,toolCalls,finishReason,actualModel,usage,extraContent:assistantExtra,reasoningDetails,metrics:info};
   };
   if(!res.body)throw new Error('This browser or endpoint did not return a response body.');
   const type=res.headers.get('content-type')||'';
@@ -2130,6 +2140,8 @@ function App() {
           if(!calls.length){
             if(provider==='gemini'&&response.extraContent)
               patchAssistant({providerTag:'gemini',providerExtraContent:response.extraContent});
+            if(provider==='openrouter'&&response.reasoningDetails?.length)
+              patchAssistant({providerTag:'openrouter',reasoningDetails:response.reasoningDetails});
             if(response.finishReason==='tool_calls')throw new Error('Model requested a tool but did not provide a valid tool call.');
             if(unclosedCodeFence(output)){
               incomplete=true;incompleteReason='unfinished_code';autoEligible=true;
@@ -2155,7 +2167,8 @@ function App() {
           diagLog('normal','tool-call-batch',{count:calls.length,round},roundCtx);
           diagLog('detailed','tool-call-arguments',{calls:calls.map(c=>({id:c.id,name:c.function?.name,arguments:c.function?.arguments}))},roundCtx);
           messages.push({role:'assistant',content:textual?null:(response.content||null),tool_calls:calls,
-            ...(provider==='gemini'&&response.extraContent?{extra_content:response.extraContent}:{})});
+            ...(provider==='gemini'&&response.extraContent?{extra_content:response.extraContent}:{}),
+            ...(provider==='openrouter'&&response.reasoningDetails?.length?{reasoning_details:response.reasoningDetails}:{})});
           for(const call of calls) {
             if(controller.signal.aborted)throw new DOMException('Stopped','AbortError');
             let result;
