@@ -86,7 +86,7 @@
 <div id="root"></div>
 <script type="text/babel">
 const {useState, useEffect, useLayoutEffect, useRef, useMemo} = React;
-const APP_BUILD = '2026-11-03-discovered-models-v5';
+const APP_BUILD = '2026-11-03-gemini-discovery-v6';
 const STORAGE_KEY = 'llm-workbench-v1';
 const USAGE_KEY = 'llm-workbench-free-only-usage-v1';
 // These are deliberately conservative CLIENT-ONLY stops, NOT the providers' real quotas.
@@ -129,9 +129,25 @@ function reserveFreeUse(provider) {
   try {localStorage.setItem(USAGE_KEY,JSON.stringify([...events,{provider,at:Date.now()}]));}
   catch {throw new Error('Free-use counter cannot be saved in this browser; remote requests blocked to avoid uncontrolled usage.');}
 }
+// Gemini's models.list is an availability catalogue, NOT a price list.
+// Keep a separate, independently vetted free-input AND free-output chat-model
+// allowlist. Never infer that all returned models are free.
+const GEMINI_VERIFIED_FREE_CHAT_MODELS = new Set([
+  'gemini-3.8-flash',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-3.5-flash',
+  'gemini-3.1-flash-lite'
+]);
+function normaliseDiscoveredModelId(provider,value){
+  if(typeof value!=='string')return '';
+  const text=value.trim();
+  return provider==='gemini'?text.replace(/^models\//,''):text;
+}
 const isApprovedModel = (provider,id) => {
   if(typeof id!=='string'||!id.trim())return false;
   if(provider==='openrouter')return id==='openrouter/free'||/^[a-z0-9._-]+\/[a-z0-9._-]+:free$/i.test(id);
+  if(provider==='gemini')return GEMINI_VERIFIED_FREE_CHAT_MODELS.has(id);
   if(provider==='ollama')return /^[a-z0-9._:/-]+$/i.test(id) && !id.includes('..');
   return !!PROVIDERS[provider]?.models?.some(([m])=>m===id);
 };
@@ -1696,6 +1712,46 @@ function DiagnosticsPanel({chatId,onClose}){
     </div>
   </div>;
 }
+// Native Google models.list returns `models/<id>`, pagination and
+// supportedGenerationMethods. Use it for discovery only; ordinary chats still
+// use Google's OpenAI-compatible /chat/completions endpoint.
+async function listGeminiNativeModels(profile,trace){
+  const endpoint='https://generativelanguage.googleapis.com/v1beta/models';
+  const headers={'x-goog-api-key':profile.key.trim()};
+  let pageToken='',pages=0,all=[];
+  const seenTokens=new Set();
+  do{
+    if(pages>=10)throw new Error('Google model list has more than 10 pages; refusing an incomplete discovery.');
+    const url=new URL(endpoint);
+    url.searchParams.set('pageSize','100');
+    if(pageToken)url.searchParams.set('pageToken',pageToken);
+    const began=performance.now();
+    const res=await fetch(url.toString(),{headers});
+    diagLog('normal','model-discovery-http',{
+      provider:'gemini',endpoint:'native /v1beta/models',
+      page:pages+1,status:res.status,elapsedMs:Math.round(performance.now()-began)
+    },trace);
+    if(!res.ok){
+      let message='HTTP '+res.status;
+      try{const data=await res.json();if(data.error?.message)message+=': '+String(data.error.message).slice(0,220);}catch{}
+      throw new Error(message);
+    }
+    const data=await res.json();
+    if(!Array.isArray(data.models))
+      throw new Error('Google native model list returned an unexpected response (missing models array).');
+    all.push(...data.models);
+    pages++;
+    pageToken=typeof data.nextPageToken==='string'?data.nextPageToken:'';
+    if(pageToken){
+      if(seenTokens.has(pageToken))throw new Error('Google model list returned a repeated page token.');
+      seenTokens.add(pageToken);
+    }
+  }while(pageToken);
+  diagLog('normal','gemini-models-listed',{pages,total:all.length,
+    chatCapable:all.filter(x=>x.supportedGenerationMethods?.includes('generateContent')).length
+  },trace);
+  return all;
+}
 function Settings({value,onChange,onClose,onOpenDiagnostics}) {
   const [showKey,setShowKey]=useState(false),[showSearchKey,setShowSearchKey]=useState(false);
   const [loadingModels,setLoadingModels]=useState(false);
@@ -1726,20 +1782,52 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
     setLoadingModels(true);setModelError('');
     const discoveryTrace={chatId:null,turnId:null};
     const discoveryStart=performance.now();
-    diagLog('normal','model-discovery-start',{provider,endpoint:profile.url.replace(/\/+$/,'')+'/models'},discoveryTrace);
+    diagLog('normal','model-discovery-start',{provider,
+      endpoint:provider==='gemini'?'native /v1beta/models':profile.url.replace(/\/+$/,'')+'/models'
+    },discoveryTrace);
     try {
       if(provider==='demo')return;
       enforceFreeOnly(provider,profile,{...value,freeTierConfirmed:{...value.freeTierConfirmed,[provider]:true}});
-      const headers={};if(provider!=='ollama'&&profile.key.trim())headers.Authorization='Bearer '+profile.key.trim();
-      const res=await fetch(profile.url.replace(/\/+$/,'')+'/models',{headers});
-      diagLog('normal','model-discovery-http',{provider,status:res.status,elapsedMs:Math.round(performance.now()-discoveryStart)},discoveryTrace);
-      if(!res.ok)throw new Error('HTTP '+res.status);
-      const data=await res.json();
-      const candidates=(data.data||data.models||[]);
+      let candidates=[];
+      if(provider==='gemini'){
+        try{
+          candidates=await listGeminiNativeModels(profile,discoveryTrace);
+        }catch(nativeError){
+          // Google also documents /v1beta/openai/models. If native
+          // discovery cannot be used (e.g. browser CORS), fall back to its
+          // OpenAI-compatible format without altering chat transport.
+          diagLog('normal','gemini-discovery-native-fallback',{
+            reason:String(nativeError.message||nativeError).slice(0,240)
+          },discoveryTrace);
+          const url=profile.url.replace(/\/+$/,'')+'/models';
+          const res=await fetch(url,{headers:{Authorization:'Bearer '+profile.key.trim()}});
+          diagLog('normal','model-discovery-http',{
+            provider,endpoint:'openai-compatible /models',status:res.status,
+            elapsedMs:Math.round(performance.now()-discoveryStart)
+          },discoveryTrace);
+          if(!res.ok)throw new Error('Google discovery failed: native '+nativeError.message+
+            '; OpenAI-compatible HTTP '+res.status);
+          const data=await res.json();
+          candidates=Array.isArray(data.data)?data.data:(
+            Array.isArray(data.models)?data.models:[]);
+        }
+      }else{
+        const headers={};if(provider!=='ollama'&&profile.key.trim())headers.Authorization='Bearer '+profile.key.trim();
+        const res=await fetch(profile.url.replace(/\/+$/,'')+'/models',{headers});
+        diagLog('normal','model-discovery-http',{provider,status:res.status,elapsedMs:Math.round(performance.now()-discoveryStart)},discoveryTrace);
+        if(!res.ok)throw new Error('HTTP '+res.status);
+        const data=await res.json();
+        candidates=Array.isArray(data.data)?data.data:(
+          Array.isArray(data.models)?data.models:[]);
+      }
       const models=candidates.map(m=>{
         if(typeof m==='string')m={id:m};
-        const id=m.id||m.name||m.model;
+        const id=normaliseDiscoveredModelId(provider,m.id||m.name||m.model||m.baseModelId);
         if(!isApprovedModel(provider,id))return null;
+        // Native Gemini listing can contain images, live audio and embedding
+        // models. Only expose generation-capable text chat model IDs.
+        if(provider==='gemini'&&Array.isArray(m.supportedGenerationMethods)&&
+            !m.supportedGenerationMethods.includes('generateContent'))return null;
         if(provider==='openrouter'){
           // Free-variant suffix alone is not enough for discovery. Require explicit zero pricing.
           const prices=m.pricing;
@@ -1751,7 +1839,15 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
       }).filter(Boolean);
       // Never insert built-in models into a successful API discovery result.
       const unique=[...new Set(models)].slice(0,300);
-      if(!unique.length)throw new Error('No confirmed FREE models returned. Refusing all unknown/paid models.');
+      diagLog('normal','model-discovery-filtered',{
+        provider,candidates:candidates.length,eligible:unique.length,
+        // No private credentials; IDs only, useful when providers rename models.
+        rejectedExamples:candidates.map(m=>typeof m==='string'?m:(m.id||m.name||m.model||m.baseModelId||''))
+          .filter(Boolean).filter(id=>!unique.includes(normaliseDiscoveredModelId(provider,id))).slice(0,8)
+      },discoveryTrace);
+      if(!unique.length)throw new Error(candidates.length
+        ?'Provider returned '+candidates.length+' model(s), but none passed the verified free chat-model filter. See Diagnostics for returned model IDs.'
+        :'Provider returned no models. The built-in suggestions remain available.');
       setDiscoveredAt(Date.now());
       // Keep the complete vetted discovery list for this provider across
       // Settings reopen/reloads. Change the actual selected model atomically.
