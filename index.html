@@ -400,7 +400,7 @@ function outputTokenLimit(profile){
   return value;
 }
 const defaultSearch = () => ({ enabled:false, mode:'tavily', tavilyKey:'', maxResults:4, maxToolSearches:3, tavilyFreeConfirmed:false });
-const defaults = () => ({ provider:'openrouter', temperature:0.7, autoContinue:true, groqContextMigrationV2:true, groqOutputMigration16kV1:true, systemPrompt:'You are a helpful, accurate assistant. Format code using fenced Markdown code blocks with language identifiers.', profiles:freshProfiles(), search:defaultSearch(), freeTierConfirmed:{openrouter:false,groq:false,gemini:false} });
+const defaults = () => ({ provider:'openrouter', temperature:0.7, autoContinue:true, discoveredModels:{}, groqContextMigrationV2:true, groqOutputMigration16kV1:true, systemPrompt:'You are a helpful, accurate assistant. Format code using fenced Markdown code blocks with language identifiers.', profiles:freshProfiles(), search:defaultSearch(), freeTierConfirmed:{openrouter:false,groq:false,gemini:false} });
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 const newChat = () => ({ id:uid(), title:'New conversation', createdAt:Date.now(), updatedAt:Date.now(), messages:[] });
 function readSaved() {
@@ -429,6 +429,9 @@ function readSaved() {
     }));
     return {
       settings: {...base, ...(data.settings || {}), groqContextMigrationV2:true, groqOutputMigration16kV1:true, profiles,
+        discoveredModels:Object.fromEntries(Object.keys(PROVIDERS).map(k=>[k,
+          (Array.isArray(data.settings?.discoveredModels?.[k])?data.settings.discoveredModels[k]:[])
+            .filter(id=>typeof id==='string'&&isApprovedModel(k,id)).slice(0,300)])),
         search:{...base.search,...(data.settings?.search||{}),mode:'tavily',tavilyFreeConfirmed:!!data.settings?.search?.tavilyFreeConfirmed},
         freeTierConfirmed:{...base.freeTierConfirmed,...(data.settings?.freeTierConfirmed||{})},
         provider: PROVIDERS[data.settings?.provider] ? data.settings.provider : 'openrouter'},
@@ -1695,17 +1698,23 @@ function DiagnosticsPanel({chatId,onClose}){
 }
 function Settings({value,onChange,onClose,onOpenDiagnostics}) {
   const [showKey,setShowKey]=useState(false),[showSearchKey,setShowSearchKey]=useState(false);
-  const [discovered,setDiscovered]=useState(null);
   const [loadingModels,setLoadingModels]=useState(false);
   const [modelError,setModelError]=useState('');
   const [discoveredAt,setDiscoveredAt]=useState(null);
   const provider=value.provider, info=PROVIDERS[provider],profile=value.profiles[provider];
   // Discovery replaces built-in suggestions, rather than extending them.
   // Built-ins remain only until a successful nonempty discovery.
-  const discoveredModels=discovered?.provider===provider?discovered.models:null;
-  const listedModels=discoveredModels?.length
+  const discoveredModels=(Array.isArray(value.discoveredModels?.[provider])
+    ?value.discoveredModels[provider]:[]).filter(id=>isApprovedModel(provider,id));
+  const suggestedModels=info.models.filter(([id])=>isApprovedModel(provider,id)).map(([id,name])=>[id,name+' · FREE']);
+  // A manually entered local Ollama model (or previously saved free model)
+  // remains visible before discovery; never add it to a discovered list.
+  if(!discoveredModels.length&&isApprovedModel(provider,profile.model)&&
+      !suggestedModels.some(([id])=>id===profile.model))
+    suggestedModels.push([profile.model,profile.model+' · selected']);
+  const listedModels=discoveredModels.length
     ?discoveredModels.map(id=>[id,id+' · discovered'])
-    :info.models.filter(([id])=>isApprovedModel(provider,id)).map(([id,name])=>[id,name+' · FREE']);
+    :suggestedModels;
   const selectedModel=listedModels.some(([id])=>id===profile.model)
     ?profile.model:(listedModels[0]?.[0]||'');
   const patch=(values)=>onChange(s=>({...s,...values}));
@@ -1714,7 +1723,7 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
   const confirmed=!!value.freeTierConfirmed?.[provider];
   const updateConfirmation=checked=>onChange(s=>({...s,freeTierConfirmed:{...s.freeTierConfirmed,[provider]:checked}}));
   async function loadModels() {
-    setLoadingModels(true);setModelError('');setDiscovered(null);
+    setLoadingModels(true);setModelError('');
     const discoveryTrace={chatId:null,turnId:null};
     const discoveryStart=performance.now();
     diagLog('normal','model-discovery-start',{provider,endpoint:profile.url.replace(/\/+$/,'')+'/models'},discoveryTrace);
@@ -1743,13 +1752,15 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
       // Never insert built-in models into a successful API discovery result.
       const unique=[...new Set(models)].slice(0,300);
       if(!unique.length)throw new Error('No confirmed FREE models returned. Refusing all unknown/paid models.');
-      setDiscovered({provider,models:unique});setDiscoveredAt(Date.now());
-      // Keep the currently selected model only when it exists in the returned
-      // eligible list. Otherwise select the first actual discovered model;
-      // the visible dropdown must always match the model sent to the API.
-      if(!unique.includes(profile.model))
-        onChange(current=>({...current,profiles:{...current.profiles,
-          [provider]:{...current.profiles[provider],model:unique[0]}}}));
+      setDiscoveredAt(Date.now());
+      // Keep the complete vetted discovery list for this provider across
+      // Settings reopen/reloads. Change the actual selected model atomically.
+      onChange(current=>({...current,
+        discoveredModels:{...(current.discoveredModels||{}),[provider]:unique},
+        profiles:{...current.profiles,[provider]:{...current.profiles[provider],
+          model:unique.includes(current.profiles[provider].model)
+            ?current.profiles[provider].model:unique[0]}}
+      }));
       diagLog('normal','model-discovery-complete',{provider,freeModels:unique.length,selectedModel:unique.includes(profile.model)?profile.model:unique[0],elapsedMs:Math.round(performance.now()-discoveryStart)},discoveryTrace);
       diagLog('detailed','model-discovery-free-models',{models:unique},discoveryTrace);
       setModelError(`${unique.length} free-only model(s) available. Paid/unknown models were hidden.`);
@@ -1768,7 +1779,7 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
           <strong className="block text-sm mb-1">NO PAID REQUESTS — IMPORTANT</strong>
           The app blocks paid model IDs, billable hosted search and automatic paid fallback. It stops at conservative local usage caps. <strong>However, it cannot inspect your provider billing plan, other devices or account-wide usage, so the browser alone CANNOT guarantee zero charges.</strong> Use ONLY free accounts/projects with no billing enabled and no automatic top-ups. Do not upgrade or attach a payment method.
         </div>
-        <div><label className="block text-xs font-semibold text-slate-300 mb-2">Provider</label><div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{Object.entries(PROVIDERS).map(([id,p])=><button key={id} onClick={()=>{patch({provider:id});setDiscovered(null);setModelError('');}} className={`text-left px-3 py-2.5 rounded-xl border text-sm ${provider===id?'bg-indigo-600/20 border-indigo-500 text-indigo-100':'bg-slate-900 border-slate-700 text-slate-300'}`}>{p.name}</button>)}</div></div>
+        <div><label className="block text-xs font-semibold text-slate-300 mb-2">Provider</label><div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{Object.entries(PROVIDERS).map(([id,p])=><button key={id} onClick={()=>{patch({provider:id});setModelError('');}} className={`text-left px-3 py-2.5 rounded-xl border text-sm ${provider===id?'bg-indigo-600/20 border-indigo-500 text-indigo-100':'bg-slate-900 border-slate-700 text-slate-300'}`}>{p.name}</button>)}</div></div>
         <div className="rounded-xl p-3 bg-slate-900 border border-slate-800 text-xs leading-5 text-slate-400">{info.help} {info.keyUrl&&<a className="inline-flex items-center gap-1 text-indigo-300 underline" href={info.keyUrl} rel="noopener noreferrer" target="_blank">{provider==='ollama'?'Get Ollama':'Get an API key'} <Icon name="arrow" size={12}/></a>}</div>
         {provider!=='demo'&&<>
           {provider!=='ollama'&&<div><label className="block text-xs font-semibold text-slate-300 mb-2">API key (FREE-tier account only)</label><div className="relative"><input className="field pr-12" type={showKey?'text':'password'} placeholder="Paste your FREE-tier API key" autoComplete="off" value={profile.key} onChange={e=>onChange(s=>({...s,profiles:{...s.profiles,[s.provider]:{...s.profiles[s.provider],key:e.target.value}},freeTierConfirmed:{...s.freeTierConfirmed,[s.provider]:false}}))}/><button className="absolute right-3 top-2.5 text-slate-400" onClick={()=>setShowKey(!showKey)} aria-label="Show or hide API key"><Icon name={showKey?'eyeoff':'eye'}/></button></div></div>}
@@ -1779,7 +1790,13 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
           <select className="field mb-2" value={selectedModel} onChange={e=>patchProfile({model:e.target.value})}>
             {listedModels.map(([id,label])=><option key={id} value={id}>{label}</option>)}
           </select>
-          {discoveredModels?.length>0&&<p className="text-[11px] text-slate-400 mb-2">Showing {discoveredModels.length} models returned by {info.name}; built-in suggestions are hidden.</p>}
+          {discoveredModels.length>0&&<div className="flex flex-wrap items-center gap-3 mb-2 text-[11px] text-slate-400">
+            <span>Showing {discoveredModels.length} models discovered from {info.name}; built-in suggestions are hidden.</span>
+            <button type="button" className="text-indigo-300 underline" onClick={()=>onChange(current=>({...current,
+              discoveredModels:{...(current.discoveredModels||{}),[provider]:[]},
+              profiles:{...current.profiles,[provider]:{...current.profiles[provider],model:info.model}}
+            }))}>Show suggested models</button>
+          </div>}
           {provider==='ollama'&&<input className="field font-mono text-xs" spellCheck="false" value={profile.model} onChange={e=>patchProfile({model:e.target.value})} placeholder="Locally installed Ollama model name"/>}
           <p className="text-[11px] text-emerald-300 leading-5">Custom paid model IDs are disabled. OpenRouter discovery requires zero pricing and a <code>:free</code> variant; with Web enabled it also requires advertised tool support. Groq/Gemini discovery uses free-tier allowlists; Ollama models run locally.</p>
           {modelError&&<p className="text-xs text-amber-300 mt-1">{modelError}</p>}
