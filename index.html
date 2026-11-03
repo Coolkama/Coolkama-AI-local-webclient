@@ -86,7 +86,7 @@
 <div id="root"></div>
 <script type="text/babel">
 const {useState, useEffect, useLayoutEffect, useRef, useMemo} = React;
-const APP_BUILD = '2026-11-03-reasoning-visibility-v3';
+const APP_BUILD = '2026-11-03-groq-16k-v4';
 const STORAGE_KEY = 'llm-workbench-v1';
 const USAGE_KEY = 'llm-workbench-free-only-usage-v1';
 // These are deliberately conservative CLIENT-ONLY stops, NOT the providers' real quotas.
@@ -384,7 +384,7 @@ const PROVIDERS = {
     models: [['offline-demo','Offline streaming simulator']]
   }
 };
-const freshProfiles = () => Object.fromEntries(Object.entries(PROVIDERS).map(([id,p]) => [id, { key:'', url:p.url, model:p.model, maxTokens:id==='groq'?4096:2048, outputLimitMode:'auto', contextTokens:8192, groqPrefill:true }]));
+const freshProfiles = () => Object.fromEntries(Object.entries(PROVIDERS).map(([id,p]) => [id, { key:'', url:p.url, model:p.model, maxTokens:id==='groq'?16384:2048, outputLimitMode:id==='groq'?'manual':'auto', contextTokens:8192, groqPrefill:true }]));
 const CONTEXT_WINDOW_CHOICES = [2048,3072,4096,8192,16384,32768,65536];
 function contextInputLimit(profile){
   const n=Number(profile?.contextTokens);
@@ -400,7 +400,7 @@ function outputTokenLimit(profile){
   return value;
 }
 const defaultSearch = () => ({ enabled:false, mode:'tavily', tavilyKey:'', maxResults:4, maxToolSearches:3, tavilyFreeConfirmed:false });
-const defaults = () => ({ provider:'openrouter', temperature:0.7, autoContinue:true, groqContextMigrationV2:true, systemPrompt:'You are a helpful, accurate assistant. Format code using fenced Markdown code blocks with language identifiers.', profiles:freshProfiles(), search:defaultSearch(), freeTierConfirmed:{openrouter:false,groq:false,gemini:false} });
+const defaults = () => ({ provider:'openrouter', temperature:0.7, autoContinue:true, groqContextMigrationV2:true, groqOutputMigration16kV1:true, systemPrompt:'You are a helpful, accurate assistant. Format code using fenced Markdown code blocks with language identifiers.', profiles:freshProfiles(), search:defaultSearch(), freeTierConfirmed:{openrouter:false,groq:false,gemini:false} });
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 const newChat = () => ({ id:uid(), title:'New conversation', createdAt:Date.now(), updatedAt:Date.now(), messages:[] });
 function readSaved() {
@@ -417,10 +417,18 @@ function readSaved() {
       // custom budgets and do not re-upgrade if the user later chooses 3,072.
       if(k==='groq'&&!data.settings?.groqContextMigrationV2&&Number(merged.contextTokens)===3072)
         merged.contextTokens=8192;
+      // One-time rollout: old Groq Automatic mode has been observed to stop
+      // at 3,072 completion tokens. Request 16,384 instead. Preserve a
+      // consciously configured Manual output limit, even when smaller.
+      if(k==='groq'&&!data.settings?.groqOutputMigration16kV1&&
+          old.outputLimitMode!=='manual'){
+        merged.outputLimitMode='manual';
+        merged.maxTokens=16384;
+      }
       return [k,merged];
     }));
     return {
-      settings: {...base, ...(data.settings || {}), groqContextMigrationV2:true, profiles,
+      settings: {...base, ...(data.settings || {}), groqContextMigrationV2:true, groqOutputMigration16kV1:true, profiles,
         search:{...base.search,...(data.settings?.search||{}),mode:'tavily',tavilyFreeConfirmed:!!data.settings?.search?.tavilyFreeConfirmed},
         freeTierConfirmed:{...base.freeTierConfirmed,...(data.settings?.freeTierConfirmed||{})},
         provider: PROVIDERS[data.settings?.provider] ? data.settings.provider : 'openrouter'},
@@ -1310,7 +1318,10 @@ async function streamChat({provider, profile, temperature, messages, signal, onT
   const payload={model:profile.model.trim(),messages,temperature:Number(temperature),stream:true};
   applyProviderRequestAdapter(provider,payload,profile,trace);
   // Omitting max_tokens lets the provider/model choose its own output allowance.
-  if(maxTokens!==null)payload.max_tokens=maxTokens;
+  if(maxTokens!==null){
+    if(provider==='groq')payload.max_completion_tokens=maxTokens;
+    else payload.max_tokens=maxTokens;
+  }
   if(toolsEnabled||finalOnly) {
     payload.tools=toolDefinitions;
     payload.tool_choice=finalOnly?'none':'auto';
@@ -1794,7 +1805,9 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
               value={profile.maxTokens??''}
               onChange={e=>patchProfile({maxTokens:e.target.value===''?'':Number(e.target.value)})}/>
           </div>}
-          <p className="text-[11px] text-slate-400 mt-1">Automatic sends no max_tokens parameter, so the provider decides how much to generate in one request. Provider output and token-per-minute quotas still apply, especially on Groq. Manual limits are optional and apply only when selected.</p>
+          <p className="text-[11px] text-slate-400 mt-1">{provider==='groq'?
+            'Groq now defaults to Manual · 16,384 output tokens per request (max_completion_tokens), including automatic continuations. The free GPT-OSS plan has an 8K tokens/minute limit, so long responses may hit 429 waits or stop earlier. Reaching the length limit or leaving an open code fence triggers bounded automatic continuation; a normal stop does not. You can change this value or choose Automatic.':
+            'Automatic omits max_tokens so the provider decides the per-request response length. Manual values are optional. Provider limits and free-tier quotas still apply.'}</p>
         </div>
         <label className="flex gap-3 items-start rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-xs leading-5 text-slate-300">
           <input type="checkbox" className="mt-1 h-4 w-4 accent-indigo-500 shrink-0"
