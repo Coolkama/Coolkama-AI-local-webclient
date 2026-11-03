@@ -32,7 +32,7 @@ Source code and documentation only. GitHub Actions have been disabled by the own
 
 For static hosting, select **Settings → Pages → Deploy from a branch → main → /(root)**. The root-level `.nojekyll` file disables Jekyll processing; this repository needs no application build step. If the public site is not published yet, review the Pages publishing status and GitHub's deployment messages. The expected URL is https://coolkama.github.io/Coolkama-AI-local-webclient/ (only after successful publication).
 
-**Confirm that the latest version was actually published:** The bottom of the left-hand chat sidebar displays `Build: 2026-11-03-provider-adapters-v2`. If the label is missing, the browser is running an older `index.html`, or GitHub Pages has not updated. Open the Pages website with a fresh query string, e.g. `?version=20261103-provider-adapters-v2`, and reload. Query strings can bypass stale browser HTML caches but cannot publish an unbuilt deployment. The GitHub commit on `main` is not proof of a live Pages deployment; inspect **Settings → Pages** for the published source and status. No GitHub Actions or paid hosting infrastructure are enabled by this repository.
+**Confirm that the latest version was actually published:** The bottom of the left-hand chat sidebar displays `Build: 2026-11-03-reasoning-visibility-v3`. If the label is missing, the browser is running an older `index.html`, or GitHub Pages has not updated. Open the Pages website with a fresh query string, e.g. `?version=20261103-provider-adapters-v2`, and reload. Query strings can bypass stale browser HTML caches but cannot publish an unbuilt deployment. The GitHub commit on `main` is not proof of a live Pages deployment; inspect **Settings → Pages** for the published source and status. No GitHub Actions or paid hosting infrastructure are enabled by this repository.
 
 ## Diagnostics (local-only)
 
@@ -126,6 +126,12 @@ This is a **recency-based window, not semantic memory or LLM-generated summarisa
 - Groq's API documents assistant prefilling, but we have **only run simulated regression tests** here, not a live free-key request. If your Groq model returns an incompatible-request error, disable prefilling under Groq Settings and export the diagnostics.
 
 Official references: [Groq assistant prefilling](https://console.groq.com/docs/prefilling), [prompt caching](https://console.groq.com/docs/prompt-caching), [Groq rate limits](https://console.groq.com/docs/rate-limits).
+
+## Reasoning-only streaming diagnostics
+
+Certain OpenRouter free-router models (observed with `dots-studio/dots-3-note-preview:free`) can stream thousands of `delta.reasoning` / `reasoning_details` chunks before emitting any visible `delta.content`. This is **not** an inactive network request. The chat now shows a lightweight **Model reasoning** activity counter and the actual selected model name while waiting for the first visible answer. It never displays private reasoning text in the chat. The stream records total reasoning characters/chunks in `llm-round-end` diagnostics; Stop continues to abort the request immediately. Reasoning-heavy free models may take a long time or never produce a final response within the chosen timeout/allowance; no automatic paid switch is introduced.
+
+The 3 November diagnostics also showed GPT-OSS 120B returning `finish_reason: length` after 3,072 total completion tokens on each request even though the client sent no `max_tokens`. This is **observed provider-chosen behaviour**, not evidence that the model supports no higher output limit. To experiment with larger single completions, select a positive **Manual output token limit** under Settings, keeping provider free-tier token budgets and rate limits in mind. No automatic output limit is silently imposed.
 
 ## Provider adapters, streaming metadata and caching integrity
 
