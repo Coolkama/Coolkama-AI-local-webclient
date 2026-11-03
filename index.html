@@ -86,7 +86,7 @@
 <div id="root"></div>
 <script type="text/babel">
 const {useState, useEffect, useLayoutEffect, useRef, useMemo} = React;
-const APP_BUILD = '2026-11-03-groq-16k-v4';
+const APP_BUILD = '2026-11-03-discovered-models-v5';
 const STORAGE_KEY = 'llm-workbench-v1';
 const USAGE_KEY = 'llm-workbench-free-only-usage-v1';
 // These are deliberately conservative CLIENT-ONLY stops, NOT the providers' real quotas.
@@ -1695,18 +1695,26 @@ function DiagnosticsPanel({chatId,onClose}){
 }
 function Settings({value,onChange,onClose,onOpenDiagnostics}) {
   const [showKey,setShowKey]=useState(false),[showSearchKey,setShowSearchKey]=useState(false);
-  const [discovered,setDiscovered]=useState([]);
+  const [discovered,setDiscovered]=useState(null);
   const [loadingModels,setLoadingModels]=useState(false);
   const [modelError,setModelError]=useState('');
   const [discoveredAt,setDiscoveredAt]=useState(null);
   const provider=value.provider, info=PROVIDERS[provider],profile=value.profiles[provider];
+  // Discovery replaces built-in suggestions, rather than extending them.
+  // Built-ins remain only until a successful nonempty discovery.
+  const discoveredModels=discovered?.provider===provider?discovered.models:null;
+  const listedModels=discoveredModels?.length
+    ?discoveredModels.map(id=>[id,id+' · discovered'])
+    :info.models.filter(([id])=>isApprovedModel(provider,id)).map(([id,name])=>[id,name+' · FREE']);
+  const selectedModel=listedModels.some(([id])=>id===profile.model)
+    ?profile.model:(listedModels[0]?.[0]||'');
   const patch=(values)=>onChange(s=>({...s,...values}));
   const patchProfile=(values)=>onChange(s=>({...s,profiles:{...s.profiles,[s.provider]:{...s.profiles[s.provider],...values}}}));
   const patchSearch=(values)=>onChange(s=>({...s,search:{...s.search,...values}}));
   const confirmed=!!value.freeTierConfirmed?.[provider];
   const updateConfirmation=checked=>onChange(s=>({...s,freeTierConfirmed:{...s.freeTierConfirmed,[provider]:checked}}));
   async function loadModels() {
-    setLoadingModels(true);setModelError('');setDiscovered([]);
+    setLoadingModels(true);setModelError('');setDiscovered(null);
     const discoveryTrace={chatId:null,turnId:null};
     const discoveryStart=performance.now();
     diagLog('normal','model-discovery-start',{provider,endpoint:profile.url.replace(/\/+$/,'')+'/models'},discoveryTrace);
@@ -1732,11 +1740,17 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
         }
         return id;
       }).filter(Boolean);
-      if(provider==='openrouter')models.unshift('openrouter/free');
+      // Never insert built-in models into a successful API discovery result.
       const unique=[...new Set(models)].slice(0,300);
       if(!unique.length)throw new Error('No confirmed FREE models returned. Refusing all unknown/paid models.');
-      setDiscovered(unique);setDiscoveredAt(Date.now());
-      diagLog('normal','model-discovery-complete',{provider,freeModels:unique.length,elapsedMs:Math.round(performance.now()-discoveryStart)},discoveryTrace);
+      setDiscovered({provider,models:unique});setDiscoveredAt(Date.now());
+      // Keep the currently selected model only when it exists in the returned
+      // eligible list. Otherwise select the first actual discovered model;
+      // the visible dropdown must always match the model sent to the API.
+      if(!unique.includes(profile.model))
+        onChange(current=>({...current,profiles:{...current.profiles,
+          [provider]:{...current.profiles[provider],model:unique[0]}}}));
+      diagLog('normal','model-discovery-complete',{provider,freeModels:unique.length,selectedModel:unique.includes(profile.model)?profile.model:unique[0],elapsedMs:Math.round(performance.now()-discoveryStart)},discoveryTrace);
       diagLog('detailed','model-discovery-free-models',{models:unique},discoveryTrace);
       setModelError(`${unique.length} free-only model(s) available. Paid/unknown models were hidden.`);
     } catch(e) {
@@ -1754,7 +1768,7 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
           <strong className="block text-sm mb-1">NO PAID REQUESTS — IMPORTANT</strong>
           The app blocks paid model IDs, billable hosted search and automatic paid fallback. It stops at conservative local usage caps. <strong>However, it cannot inspect your provider billing plan, other devices or account-wide usage, so the browser alone CANNOT guarantee zero charges.</strong> Use ONLY free accounts/projects with no billing enabled and no automatic top-ups. Do not upgrade or attach a payment method.
         </div>
-        <div><label className="block text-xs font-semibold text-slate-300 mb-2">Provider</label><div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{Object.entries(PROVIDERS).map(([id,p])=><button key={id} onClick={()=>{patch({provider:id});setDiscovered([]);setModelError('');}} className={`text-left px-3 py-2.5 rounded-xl border text-sm ${provider===id?'bg-indigo-600/20 border-indigo-500 text-indigo-100':'bg-slate-900 border-slate-700 text-slate-300'}`}>{p.name}</button>)}</div></div>
+        <div><label className="block text-xs font-semibold text-slate-300 mb-2">Provider</label><div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{Object.entries(PROVIDERS).map(([id,p])=><button key={id} onClick={()=>{patch({provider:id});setDiscovered(null);setModelError('');}} className={`text-left px-3 py-2.5 rounded-xl border text-sm ${provider===id?'bg-indigo-600/20 border-indigo-500 text-indigo-100':'bg-slate-900 border-slate-700 text-slate-300'}`}>{p.name}</button>)}</div></div>
         <div className="rounded-xl p-3 bg-slate-900 border border-slate-800 text-xs leading-5 text-slate-400">{info.help} {info.keyUrl&&<a className="inline-flex items-center gap-1 text-indigo-300 underline" href={info.keyUrl} rel="noopener noreferrer" target="_blank">{provider==='ollama'?'Get Ollama':'Get an API key'} <Icon name="arrow" size={12}/></a>}</div>
         {provider!=='demo'&&<>
           {provider!=='ollama'&&<div><label className="block text-xs font-semibold text-slate-300 mb-2">API key (FREE-tier account only)</label><div className="relative"><input className="field pr-12" type={showKey?'text':'password'} placeholder="Paste your FREE-tier API key" autoComplete="off" value={profile.key} onChange={e=>onChange(s=>({...s,profiles:{...s.profiles,[s.provider]:{...s.profiles[s.provider],key:e.target.value}},freeTierConfirmed:{...s.freeTierConfirmed,[s.provider]:false}}))}/><button className="absolute right-3 top-2.5 text-slate-400" onClick={()=>setShowKey(!showKey)} aria-label="Show or hide API key"><Icon name={showKey?'eyeoff':'eye'}/></button></div></div>}
@@ -1762,10 +1776,10 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
           {provider!=='ollama'&&<label className="flex gap-2 items-start rounded-xl border border-amber-700/60 bg-amber-950/20 p-3 text-xs leading-5 text-amber-100"><input className="mt-1 h-4 w-4 accent-emerald-500 shrink-0" type="checkbox" checked={confirmed} onChange={e=>updateConfirmation(e.target.checked)}/><span><strong>Required before API requests:</strong> I have checked that this API key uses the provider's genuine FREE tier, with NO billing-enabled project, Developer/pay-as-you-go plan or auto-recharge. I understand the app cannot independently verify account billing.</span></label>}
         </>}
         <div><div className="flex justify-between items-center mb-2"><label className="text-xs font-semibold text-slate-300">Free models only</label>{provider!=='demo'&&<button className="text-xs text-indigo-300 disabled:opacity-50" disabled={loadingModels} onClick={loadModels}>{loadingModels?'Loading…':'Discover FREE models'}</button>}</div>
-          <select className="field mb-2" value={isApprovedModel(provider,profile.model)?profile.model:info.model} onChange={e=>patchProfile({model:e.target.value})}>
-            {info.models.filter(([id])=>isApprovedModel(provider,id)).map(([id,name])=><option key={id} value={id}>{name} · FREE</option>)}
-            {[...new Set([...discovered,...(isApprovedModel(provider,profile.model)?[profile.model]:[])])].filter(id=>isApprovedModel(provider,id)&&!info.models.some(([known])=>known===id)).map(id=><option key={id} value={id}>{id} · free</option>)}
+          <select className="field mb-2" value={selectedModel} onChange={e=>patchProfile({model:e.target.value})}>
+            {listedModels.map(([id,label])=><option key={id} value={id}>{label}</option>)}
           </select>
+          {discoveredModels?.length>0&&<p className="text-[11px] text-slate-400 mb-2">Showing {discoveredModels.length} models returned by {info.name}; built-in suggestions are hidden.</p>}
           {provider==='ollama'&&<input className="field font-mono text-xs" spellCheck="false" value={profile.model} onChange={e=>patchProfile({model:e.target.value})} placeholder="Locally installed Ollama model name"/>}
           <p className="text-[11px] text-emerald-300 leading-5">Custom paid model IDs are disabled. OpenRouter discovery requires zero pricing and a <code>:free</code> variant; with Web enabled it also requires advertised tool support. Groq/Gemini discovery uses free-tier allowlists; Ollama models run locally.</p>
           {modelError&&<p className="text-xs text-amber-300 mt-1">{modelError}</p>}
