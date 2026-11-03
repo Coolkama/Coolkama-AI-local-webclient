@@ -32,7 +32,13 @@ Source code and documentation only. GitHub Actions have been disabled by the own
 
 For static hosting, select **Settings → Pages → Deploy from a branch → main → /(root)**. The root-level `.nojekyll` file disables Jekyll processing; this repository needs no application build step. If the public site is not published yet, review the Pages publishing status and GitHub's deployment messages. The expected URL is https://coolkama.github.io/Coolkama-AI-local-webclient/ (only after successful publication).
 
-**Confirm that the latest version was actually published:** The bottom of the left-hand chat sidebar displays `Build: 2026-11-03-groq-16k-v4`. If the label is missing, the browser is running an older `index.html`, or GitHub Pages has not updated. Open the Pages website with a fresh query string, e.g. `?version=20261103-provider-adapters-v2`, and reload. Query strings can bypass stale browser HTML caches but cannot publish an unbuilt deployment. The GitHub commit on `main` is not proof of a live Pages deployment; inspect **Settings → Pages** for the published source and status. No GitHub Actions or paid hosting infrastructure are enabled by this repository.
+**Confirm that the latest version was actually published:** The bottom of the left-hand chat sidebar displays `Build: 2026-11-03-discovered-models-v5`. If the label is missing, the browser is running an older `index.html`, or GitHub Pages has not updated. Open the Pages website with a fresh query string, e.g. `?version=20261103-provider-adapters-v2`, and reload. Query strings can bypass stale browser HTML caches but cannot publish an unbuilt deployment. The GitHub commit on `main` is not proof of a live Pages deployment; inspect **Settings → Pages** for the published source and status. No GitHub Actions or paid hosting infrastructure are enabled by this repository.
+
+## Discovered model lists
+
+The **Discover FREE models** button queries the currently selected provider. If at least one eligible model is returned, the selector shows **only the returned, free-only-approved models**, replacing the built-in suggestions rather than merging them. The client no longer inserts `openrouter/free` into a discovery response when that ID was not returned by the provider. If the current selection was not returned, the first eligible returned model becomes the actual active model.
+
+Discovered lists are retained **separately per provider in this browser's local settings**, including after Settings is closed or the page reloads. The **Show suggested models** action deliberately clears the discovered list for just that provider and restores the built-in suggestions. Failed/empty discovery does not replace the existing valid list. Existing free-only model filters and account safeguards still apply; discovery does not enable paid endpoints or models.
 
 ## Diagnostics (local-only)
 
