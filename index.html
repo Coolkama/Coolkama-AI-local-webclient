@@ -787,6 +787,37 @@ function withRequestDate(history,dateContext){
   // a Groq prompt-cache prefix remains identical across this answer.
   return [...leading,{role:'system',content:dateContext},...rest];
 }
+// In-memory original request snapshots preserve the exact cacheable prefix for
+// automatic and same-session manual Groq prefills. Do not persist duplicate
+// document contents or raw API payloads into browser storage.
+const continuationRequestPrefixes=new Map();
+function rememberContinuationPrefix(id,request){
+  if(!request)return;
+  continuationRequestPrefixes.delete(id);
+  continuationRequestPrefixes.set(id,request);
+  while(continuationRequestPrefixes.size>12)
+    continuationRequestPrefixes.delete(continuationRequestPrefixes.keys().next().value);
+}
+function snapshotContinuationPrefix(messages,toolsEnabled,toolDefinitions,finalOnly=false){
+  return {messages:messages.map(m=>({...m})),toolsEnabled:!!toolsEnabled,
+    toolDefinitions:toolDefinitions,finalOnly:!!finalOnly};
+}
+// A cache-friendly prefill must extend the exact previous request, rather
+// than reconstructing systems, tools or user messages from chat history.
+// Never silently window or edit the prefix: fall back to a normal follow-up
+// if the whole assistant prefill exceeds the configured input budget.
+function cachedPrefillRequest(provider,profile,prefix,previous){
+  if(continuationProtocol(provider,profile)!=='assistant-prefill'||!prefix)return null;
+  const messages=[...prefix.messages,{role:'assistant',content:previous}];
+  const budget=contextInputLimit(profile);
+  const estimatedTokens=messages.reduce((sum,m)=>sum+contextMessageTokens(m),0);
+  if(estimatedTokens>budget)return null;
+  return {protocol:'assistant-prefill',messages,stats:{
+    budget,estimatedTokens,sourceMessages:messages.length,sentMessages:messages.length,
+    droppedMessages:0,droppedTurns:0,shortenedMessages:0,
+    shortenedEstimatedTokens:0,exceedsBudget:false
+  },prefix};
+}
 function buildContinuationMessages({provider,profile,history,previous,instruction,followup,dateContext}){
   const protocol=continuationProtocol(provider,profile);
   // Give the model one, and only one, copy of its previous answer.
@@ -1209,6 +1240,8 @@ async function streamChat({provider, profile, temperature, messages, signal, onT
   if(provider !== 'ollama') headers.Authorization=`Bearer ${profile.key.trim()}`;
   if(provider==='openrouter') {headers['HTTP-Referer']=location.origin==='null'?'https://openrouter.ai':location.origin;headers['X-Title']='Tight Arse AI';}
   const payload={model:profile.model.trim(),messages,temperature:Number(temperature),stream:true};
+  // Groq delivers usage (including cached_tokens) after the finish_reason event.
+  if(provider==='groq')payload.stream_options={include_usage:true};
   // Omitting max_tokens lets the provider/model choose its own output allowance.
   if(maxTokens!==null)payload.max_tokens=maxTokens;
   if(toolsEnabled||finalOnly) {
@@ -1267,7 +1300,12 @@ async function streamChat({provider, profile, temperature, messages, signal, onT
   };
   const finish=()=>{
     const toolCalls=[...calls.entries()].sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
-    const info={requestedModel:profile.model,actualModel:actualModel||null,finishReason:finishReason||'not reported',toolCalls:toolCalls.length,contentChars:content.length,contentChunks:chunkCount,sseEvents,firstTokenMs,durationMs:Math.round(performance.now()-began),usage};
+    const promptTokens=typeof usage?.prompt_tokens==='number'?usage.prompt_tokens:null;
+    const cachedTokens=typeof usage?.prompt_tokens_details?.cached_tokens==='number'
+      ?usage.prompt_tokens_details.cached_tokens:null;
+    const info={requestedModel:profile.model,actualModel:actualModel||null,finishReason:finishReason||'not reported',toolCalls:toolCalls.length,contentChars:content.length,contentChunks:chunkCount,sseEvents,firstTokenMs,durationMs:Math.round(performance.now()-began),usage,
+      promptTokens,cachedTokens,cacheHitPercent:promptTokens>0&&cachedTokens!==null
+        ?Math.round(cachedTokens/promptTokens*1000)/10:null};
     diagLog('normal','llm-round-end',info,trace);
     diagLog('detailed','llm-tool-calls',{calls:toolCalls.map(x=>({id:x.id,name:x.function?.name,arguments:x.function?.arguments}))},trace);
     diagLog('full','llm-response-content',{content},trace);
@@ -1310,7 +1348,8 @@ async function streamChat({provider, profile, temperature, messages, signal, onT
     if(typeof obj.model==='string')actualModel=obj.model;
     if(obj.usage)usage=obj.usage;
     ingestChoice(obj.choices?.[0]);
-    if(finishReason)complete=true;
+    // Do not stop on finish_reason: streaming usage is often the next SSE
+    // event, immediately before [DONE]. Otherwise cache hits disappear.
   }
   try {
     while(!complete) {
@@ -1786,14 +1825,26 @@ function App() {
       'Output only the missing suffix. Never repeat code, redeclare earlier functions or variables, '+
       'restart a section, introduce the answer or open another code block. '+
       'Stay inside an existing Markdown code fence and close it once the code is complete. Do not use tools.';
-    const continuationPlan=buildContinuationMessages({
-      provider,profile:config,history:messages,previous:original,instruction:constraint,
+    const storedPrefix=continuationRequestPrefixes.get(messageId)||null;
+    const cachedRequest=cachedPrefillRequest(provider,config,storedPrefix,original);
+    // On reload (no retained snapshot), or after exceeding the input budget,
+    // use the normal protocol; never present a rebuilt request as a cache prefill.
+    const continuationPlan=cachedRequest||buildContinuationMessages({
+      provider,profile:{...config,groqPrefill:false},history:messages,
+      previous:original,instruction:constraint,
       followup:'Continue your immediately preceding answer, supplying only the next characters. '+
         (fence?'It currently ends inside an open '+(fence.language||'code')+' fenced block. ':'')+
         'Do not restart or repeat any part of it.',
       dateContext:runtimeDateContext()
     });
-    const continuationWindow=rollContextMessages(continuationPlan.messages,config);
+    const continuationWindow=cachedRequest
+      ?{messages:cachedRequest.messages,stats:cachedRequest.stats}
+      :rollContextMessages(continuationPlan.messages,config);
+    if(continuationProtocol(provider,config)==='assistant-prefill'&&!cachedRequest)
+      diagLog('normal','prefill-cache-fallback',{
+        reason:storedPrefix?'input-budget-exceeded':'original-request-not-in-memory',
+        usedProtocol:'followup-turn'
+      },diagCtx);
     diagLog('normal','context-window',{...continuationWindow.stats,provider,continuation:true},diagCtx);
     workRef.current={id:chatId,turnId:messageId,controller};
     setBusy(chatId);
@@ -1807,7 +1858,10 @@ function App() {
       const response=await streamChatWithRateWait({
         provider,profile:config,temperature:settings.temperature,messages:continuationWindow.messages,
         signal:controller.signal,onToken:part=>joiner.push(part),onSources:()=>{},
-        toolsEnabled:false,trace:diagCtx
+        toolsEnabled:cachedRequest?cachedRequest.prefix.toolsEnabled:false,
+        toolDefinitions:cachedRequest?cachedRequest.prefix.toolDefinitions:WEB_SEARCH_TOOLS,
+        finalOnly:cachedRequest?cachedRequest.prefix.finalOnly:false,
+        trace:diagCtx
       },()=>setUsageRevision(v=>v+1));
       if(response.toolCalls?.length||/<dots_function_call>/i.test(response.content)){
         combined=original;
@@ -1870,6 +1924,7 @@ function App() {
     diagLog('full','user-message',{text:content},diagCtx);
     const requestDateContext=runtimeDateContext();
     let output='',lastPaint=0,allSources=[],searchLog=[],openLog=[],incomplete=false,incompleteReason=null,autoEligible=false,autoRounds=0,continuationFailure=null;
+    let continuationPrefix=null;
     const openedPages=new Map(),openFailures=new Map();
     const patchAssistant=changes=>patchChat(chatId,c=>({...c,updatedAt:Date.now(),messages:c.messages.map(m=>m.id===assistantId?{...m,...changes}:m)}));
     const paint=()=>patchAssistant({content:output});
@@ -1902,6 +1957,7 @@ function App() {
             'Research tool budget reached · generating final response…');
           const windowed=rollContextMessages(withRequestDate(messages,requestDateContext),config);
           const requestMessages=windowed.messages;
+          continuationPrefix=snapshotContinuationPrefix(requestMessages,canUseWebTools,availableTools);
           diagLog('normal','context-window',{...windowed.stats,round,provider},roundCtx);
           patchAssistant({contextWindow:{...windowed.stats}});
           diagLog('normal','request-date-context',{dateUtc:new Date().toISOString(),browserTimeZone:Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC'},roundCtx);
@@ -1953,6 +2009,7 @@ function App() {
             diagLog('normal','context-window',{...recoveredWindow.stats,provider,recovery:true},roundCtx);
             try{
               response=await streamChatWithRateWait({provider,profile:config,temperature:Math.min(Number(settings.temperature)||0.7,0.3),messages:recoveryMessages,signal:controller.signal,onToken:roundToken,onSources:addSources,toolsEnabled:false,finalOnly:true,trace:{...roundCtx,recovery:true}},()=>setUsageRevision(v=>v+1));
+              continuationPrefix=snapshotContinuationPrefix(recoveryMessages,false,WEB_SEARCH_TOOLS,true);
               if(response.toolCalls.length||!response.content.trim()||response.content.includes('<dots_function_call>')){
                 output=sourceOnlyAnswer(allSources,'Groq did not provide a valid text-only response after tool-call validation failed.');
                 paint();incomplete=true;answered=true;break;
@@ -2087,6 +2144,8 @@ function App() {
           }
           if(searchMode)status('AI reviewing search evidence…');
         }
+        if(output.trim()&&continuationPrefix)
+          rememberContinuationPrefix(assistantId,continuationPrefix);
         if(settings.autoContinue!==false&&autoEligible&&output.trim()&&
             ['output_limit','unfinished_code'].includes(incompleteReason)){
           const continueRule='Continue your immediately preceding assistant answer from its exact final character. '+
@@ -2098,14 +2157,22 @@ function App() {
             const previous=output;
             const nextRound=autoRounds+1;
             const previousFence=unclosedCodeFence(previous);
-            const continuationPlan=buildContinuationMessages({
-              provider,profile:config,history:messages,previous,
+            const cachedRequest=cachedPrefillRequest(provider,config,continuationPrefix,previous);
+            const continuationPlan=cachedRequest||buildContinuationMessages({
+              provider,profile:{...config,groqPrefill:false},history:messages,previous,
               instruction:continueRule,dateContext:requestDateContext,
               followup:'Continue exactly where the preceding answer ended. '+
                 (previousFence?'It ends inside a '+(previousFence.language||'code')+' Markdown fence. ':'')+
                 'Reply with only the remaining text, no repetition.'
             });
-            const windowed=rollContextMessages(continuationPlan.messages,config);
+            const windowed=cachedRequest
+              ?{messages:cachedRequest.messages,stats:cachedRequest.stats}
+              :rollContextMessages(continuationPlan.messages,config);
+            if(continuationProtocol(provider,config)==='assistant-prefill'&&!cachedRequest)
+              diagLog('normal','prefill-cache-fallback',{
+                reason:continuationPrefix?'input-budget-exceeded':'original-request-unavailable',
+                usedProtocol:'followup-turn'
+              },{...diagCtx,round:autoRounds+1});
             patchAssistant({contextWindow:windowed.stats,searchStatus:null});
             autoRounds++;
             const ctx={...diagCtx,round:autoRounds,autoContinuation:true};
@@ -2124,7 +2191,11 @@ function App() {
                 provider,profile:config,temperature:settings.temperature,
                 messages:windowed.messages,signal:controller.signal,
                 onToken:part=>joiner.push(part),
-                onSources:()=>{},toolsEnabled:false,trace:ctx
+                onSources:()=>{},
+                toolsEnabled:cachedRequest?cachedRequest.prefix.toolsEnabled:false,
+                toolDefinitions:cachedRequest?cachedRequest.prefix.toolDefinitions:WEB_SEARCH_TOOLS,
+                finalOnly:cachedRequest?cachedRequest.prefix.finalOnly:false,
+                trace:ctx
               },()=>setUsageRevision(v=>v+1));
               if(response.toolCalls?.length||/<dots_function_call>/i.test(response.content))
                 throw new Error('Model generated a tool call instead of finishing text.');
