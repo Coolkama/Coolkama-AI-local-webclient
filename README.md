@@ -32,7 +32,7 @@ Source code and documentation only. GitHub Actions have been disabled by the own
 
 For static hosting, select **Settings → Pages → Deploy from a branch → main → /(root)**. The root-level `.nojekyll` file disables Jekyll processing; this repository needs no application build step. If the public site is not published yet, review the Pages publishing status and GitHub's deployment messages. The expected URL is https://coolkama.github.io/Coolkama-AI-local-webclient/ (only after successful publication).
 
-**Confirm that the latest version was actually published:** The bottom of the left-hand chat sidebar displays `Build: 2026-11-03-reasoning-visibility-v3`. If the label is missing, the browser is running an older `index.html`, or GitHub Pages has not updated. Open the Pages website with a fresh query string, e.g. `?version=20261103-provider-adapters-v2`, and reload. Query strings can bypass stale browser HTML caches but cannot publish an unbuilt deployment. The GitHub commit on `main` is not proof of a live Pages deployment; inspect **Settings → Pages** for the published source and status. No GitHub Actions or paid hosting infrastructure are enabled by this repository.
+**Confirm that the latest version was actually published:** The bottom of the left-hand chat sidebar displays `Build: 2026-11-03-groq-16k-v4`. If the label is missing, the browser is running an older `index.html`, or GitHub Pages has not updated. Open the Pages website with a fresh query string, e.g. `?version=20261103-provider-adapters-v2`, and reload. Query strings can bypass stale browser HTML caches but cannot publish an unbuilt deployment. The GitHub commit on `main` is not proof of a live Pages deployment; inspect **Settings → Pages** for the published source and status. No GitHub Actions or paid hosting infrastructure are enabled by this repository.
 
 ## Diagnostics (local-only)
 
@@ -90,12 +90,12 @@ The model may make at most **three web searches and three new page opens per use
 
 The collapsed **Searched web** panel displays search queries, opened pages and source links, including which sources were read. The normal/detailed/full local diagnostics record extraction timing, failures, the returned text (Full Trace) and cache hits. The tool schema is made available dynamically when the corresponding per-turn budget permits. Both OpenAI-compatible structured function calls and the supported Dots-style textual calls can request `web_open`; OpenRouter's Any Free Model rotation remains enabled.
 
-## Per-request output length (Automatic by default)
+## Per-request output length (Groq 16K; others Automatic by default)
 
-- **Settings → Output length → Automatic** is the default for all providers. The app **omits `max_tokens`** from OpenAI-compatible requests and lets the provider/model determine its own maximum output length. There is no client-imposed 2,048 / 4,096 / 8,192-token cap in this mode.
-- **Manual token limit** is an optional positive whole-number override, stored separately for each provider profile. Only explicitly selecting Manual sends `max_tokens: N`. Existing saved 2,048/4,096-token preferences are retained for possible manual use but no longer silently restrict requests following the migration.
-- Provider/model output allowances, context constraints, rate-limit caps and free-tier account quotas **still apply**. Groq may reject an oversized single request or later throttle tokens-per-minute; the existing bounded Groq wait/retry and local conservative counters remain active.
-- When `finish_reason: "length"` indicates a truncated response, the answer remains incomplete unless a continuation actually finishes it. Diagnostics record `maxTokens: null` in Automatic mode and the actual manual override when selected.
+- **Groq now defaults to Manual 16,384 output tokens per request**, sent as `max_completion_tokens: 16384` for the current Groq API. The same limit applies to its automatic continuation requests. Existing saved Groq profiles on Automatic mode migrate once to Manual 16K; deliberate existing Manual limits are kept unchanged. The user may change the limit or restore Automatic in Settings.
+- OpenRouter, Gemini and Ollama still default to Automatic, which omits `max_tokens` and lets their respective model/provider choose the output allowance. Manual mode sends `max_tokens: N` for these providers.
+- **Important free-tier constraint:** Groq lists GPT-OSS 20B/120B at **8,000 TPM** on the Free plan. A 16,384-token maximum is a requested ceiling, **not** permission to exceed throughput quotas or a guarantee of a 16K response. Groq may return a 429, wait, reject an oversized request, or stop earlier. The app retains bounded waits and local request caps; no paid fallback.
+- Automatic continuation runs if `finish_reason: "length"` or an unclosed fenced-code block indicates an unfinished response. An ordinary `stop` does not trigger continuation just because the response used fewer than 16K tokens. The continuation alignment checker may reject restarted code rather than corrupting the original answer.
 
 ## Continue truncated answers in place
 
