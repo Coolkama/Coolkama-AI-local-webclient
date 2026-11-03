@@ -1397,7 +1397,8 @@ async function streamChat({provider, profile, temperature, messages, signal, onT
       failure.code=json.error.code||null;
       throw failure;
     }
-    actualModel=json.model||null;usage=json.usage||null;
+    actualModel=json.model||null;usage=json.usage||(
+      typeof json.x_groq?.usage?.prompt_tokens==='number'?json.x_groq.usage:null);
     diagLog('full','llm-raw-json-response',{response:json},trace);
     ingestChoice(json.choices?.[0]);
     onSources?.(normalizeSources(json.choices?.[0]?.message?.annotations));
@@ -1422,7 +1423,11 @@ async function streamChat({provider, profile, temperature, messages, signal, onT
     }
     sseEvents++;
     if(typeof obj.model==='string')actualModel=obj.model;
-    if(obj.usage)usage=obj.usage;
+    // Groq may emit final usage either as the OpenAI-compatible usage field
+    // or under x_groq.usage. Ignore hardware-only x_groq cache metrics when
+    // they do not include prompt token counts.
+    const reportedUsage=obj.usage||obj.x_groq?.usage;
+    if(reportedUsage&&typeof reportedUsage.prompt_tokens==='number')usage=reportedUsage;
     ingestChoice(obj.choices?.[0]);
     // Do not stop on finish_reason: streaming usage is often the next SSE
     // event, immediately before [DONE]. Otherwise cache hits disappear.
