@@ -2530,7 +2530,7 @@ function Message({message,streaming,onContinue,canContinue=false,onApproveImage,
           <Icon name={copyFeedback==='Copied'?'check':'copy'} size={16}/>
         </button>
         <button type="button" onClick={()=>onSpeak?.(message)}
-          disabled={!readableReplyText(message)} aria-label={isSpeaking?'Stop reading response':'Read response aloud'}
+          disabled={!String(message.content||'').trim()&&!message.diagram?.code&&!message.imageResult} aria-label={isSpeaking?'Stop reading response':'Read response aloud'}
           title={isSpeaking?'Stop speaking':'Speak response using browser text-to-speech'}
           className={'inline-flex items-center justify-center min-w-9 h-9 rounded-lg hover:bg-emerald-900/45 disabled:opacity-40 '+(isSpeaking?'text-lime-300 bg-emerald-900/50':'')}>
           <Icon name={isSpeaking?'stop':'volume'} size={16}/>
@@ -2925,7 +2925,7 @@ function App() {
   const [usageRevision,setUsageRevision]=useState(0);
   const [showLatest,setShowLatest]=useState(false);
   const [speakingMessageId,setSpeakingMessageId]=useState(null);
-  const speechRef=useRef({sequence:0,messageId:null});
+  const speechRef=useRef({sequence:0,messageId:null,utterance:null});
   const inputRef=useRef(null),fileRef=useRef(null),chatScrollRef=useRef(null),workRef=useRef(null);
   const followTailRef=useRef(true),lastChatRef=useRef(null);
   const active=chats.find(c=>c.id===activeId)||chats[0];
@@ -2934,6 +2934,7 @@ function App() {
   function stopSpeaking(){
     speechRef.current.sequence++;
     speechRef.current.messageId=null;
+    speechRef.current.utterance=null;
     try{window.speechSynthesis?.cancel();}catch{}
     setSpeakingMessageId(null);
   }
@@ -2952,20 +2953,22 @@ function App() {
     const next=()=>{
       if(speechRef.current.sequence!==sequence||speechRef.current.messageId!==message.id)return;
       if(index>=parts.length){
-        speechRef.current.messageId=null;setSpeakingMessageId(null);return;
+        speechRef.current.messageId=null;speechRef.current.utterance=null;
+        setSpeakingMessageId(null);return;
       }
       const speech=new SpeechSynthesisUtterance(parts[index++]);
       speech.lang=navigator.language||'en-GB';
       speech.rate=1;
-      speech.onend=next;
+      speech.onend=()=>{speechRef.current.utterance=null;next();};
       speech.onerror=event=>{
         if(speechRef.current.sequence!==sequence)return;
-        speechRef.current.messageId=null;setSpeakingMessageId(null);
+        speechRef.current.messageId=null;speechRef.current.utterance=null;
+        setSpeakingMessageId(null);
         if(!['canceled','interrupted'].includes(event.error))
           setNotice('Browser speech stopped: '+String(event.error||'speech synthesis unavailable'));
       };
-      try{window.speechSynthesis.speak(speech);}
-      catch(error){speechRef.current.messageId=null;setSpeakingMessageId(null);
+      try{speechRef.current.utterance=speech;window.speechSynthesis.speak(speech);}
+      catch(error){speechRef.current.messageId=null;speechRef.current.utterance=null;setSpeakingMessageId(null);
         setNotice('Browser speech failed: '+String(error.message||error));}
     };
     next();
