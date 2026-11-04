@@ -137,15 +137,21 @@
     html, body {background:#010a05}
     #root { position:relative; z-index:1; background:transparent; }
     #matrix-backdrop {position:fixed; z-index:0; inset:0; pointer-events:none; overflow:hidden;
-      background:radial-gradient(ellipse at 60% 30%, #0b321c 0%, #04160d 43%, #010703 92%);}
+      /* The EXACT gradient used behind the SVG launch robot. */
+      background:radial-gradient(ellipse at 50% 37%, #123b2a 0%, #06140e 42%, #010703 86%);}
+    #matrix-backdrop::before {content:"";position:absolute;inset:0;pointer-events:none;
+      background-image:linear-gradient(#45ff9617 1px,transparent 1px),
+                       linear-gradient(90deg,#45ff9617 1px,transparent 1px);
+      background-size:30px 30px;
+      mask-image:radial-gradient(ellipse at 50% 40%,#000,transparent 85%);}
     #matrix-backdrop::after {content:""; position:absolute; inset:0; z-index:1;
-      background:linear-gradient(90deg,#010803aa 0%,transparent 18%,transparent 82%,#010803b0 100%),
-                 repeating-linear-gradient(0deg, #020e0718 0px,#020e0718 2px,transparent 2px,transparent 6px);}
+      background:linear-gradient(90deg,#01080353 0%,transparent 18%,transparent 82%,#01080375 100%),
+                 repeating-linear-gradient(0deg,#020e0714 0px,#020e0714 2px,transparent 2px,transparent 6px);}
     .matrix-column {position:absolute; left:var(--left); top:-95vh; height:220vh; width:1.1rem;
       color:#72fd66; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
       font-size:clamp(11px,1.45vw,16px); font-weight:600; line-height:1.65; letter-spacing:.36em;
-      writing-mode:vertical-rl; white-space:nowrap; text-shadow:0 0 7px #43f96c55;
-      opacity:var(--alpha,.30); transform:translate3d(0,-20%,0);
+      writing-mode:vertical-rl; white-space:nowrap; text-shadow:0 0 7px #43f96c99,0 0 14px #2dff5c45;
+      opacity:clamp(.27,calc(var(--alpha,.30) * 2.3),.74); transform:translate3d(0,-20%,0);
       animation:matrix-stream var(--duration,27s) linear infinite; animation-delay:var(--delay,0s);}
     @keyframes matrix-stream {from{transform:translate3d(0,-24%,0)}
       to{transform:translate3d(0,25%,0)}}
@@ -159,32 +165,36 @@
     #root .matrix-main {background:rgba(2,12,7,.20);}
     #root .matrix-header {background:rgba(3,18,11,.90);border-bottom-color:#2a693e;
       box-shadow:0 8px 25px #00120570;backdrop-filter:blur(16px);}
-    #root .matrix-chat {background:rgba(2,12,7,.51);}
+    #root .matrix-chat {background:rgba(2,12,7,.09);}
     #root .matrix-composer {background:rgba(3,18,10,.94);border-color:#357c49;
       backdrop-filter:blur(16px);box-shadow:0 -9px 27px #00160a72;}
     #root .matrix-composer-input {background:rgba(6,30,16,.94);
       border-color:#448855;box-shadow:inset 0 0 0 1px #58ca6020;}
     #root .matrix-composer-input:focus-within {border-color:#9bff55;box-shadow:0 0 0 1px #85eb64a0,inset 0 0 22px #3ada2c16;}
-    #root .chat-user-bubble {background:linear-gradient(135deg,#baff69,#81f947);
-      color:#082012;border:1px solid #ddffac;box-shadow:0 3px 23px #59ec3d29;
+    #root .chat-user-bubble {background:linear-gradient(132deg,rgba(18,62,31,.97),rgba(7,36,20,.97));
+      color:#baff9a;border:1px solid #77e67d;box-shadow:0 3px 19px #28b75a20,inset 0 1px #baff8a29;
       border-radius:20px 20px 6px 20px;}
-    #root .chat-user-bubble .text-slate-100,#root .chat-user-bubble .text-slate-300{color:#071a0a;}
-    #root .chat-assistant-bubble {background:linear-gradient(128deg,rgba(11,37,22,.96),rgba(4,21,13,.96));
-      border:1px solid #3b7950;box-shadow:0 8px 32px #0007,inset 0 1px #adff9512;
+    #root .chat-user-bubble .text-slate-100,#root .chat-user-bubble .text-slate-300,
+    #root .chat-user-bubble .whitespace-pre-wrap{color:#beffa8;}
+    #root .chat-assistant-bubble {background:linear-gradient(128deg,rgba(10,33,19,.96),rgba(3,20,12,.96));
+      color:#c9ffc1;border:1px solid #3f8051;box-shadow:0 8px 32px #0007,inset 0 1px #adff951a;
       border-radius:20px 20px 20px 6px;}
     #root .matrix-avatar {border:1px solid #80eb77;background:#123722;color:#a4ff87;box-shadow:0 0 13px #3eff6c22;}
-    #root .matrix-avatar.user-avatar {background:#baff69;color:#071e0b;border-color:#d8ffa8;}
+    #root .matrix-avatar.user-avatar {background:#1b4e2c;color:#c6ffa5;border-color:#77e67d;}
     #root .matrix-ui .bg-slate-900 {background-color:rgba(6,27,16,.90);}
     #root .matrix-ui .bg-slate-950 {background-color:rgba(2,13,8,.94);}
     #root .matrix-ui .bg-slate-800 {background-color:rgba(18,48,30,.87);}
     /* Transparent main and translucent panels win over generic Tailwind surfaces. */
-    #root .matrix-ui .matrix-main.bg-slate-950 {background:rgba(2,12,7,.22);}
+    #root .matrix-ui .matrix-main.bg-slate-950 {background:transparent;}
     #root .matrix-ui .matrix-sidebar.bg-slate-900 {background:rgba(3,19,11,.88);}
     #root .matrix-ui .matrix-composer-input.bg-slate-900 {background:rgba(6,30,16,.94);}
     #root .matrix-ui .border-slate-800 {border-color:#315c3f;}
     #root .matrix-ui .border-slate-700 {border-color:#477456;}
-    #root .matrix-ui .text-slate-400 {color:#afc5b4;}
-    #root .matrix-ui .text-slate-500 {color:#83a38b;}
+    #root .matrix-ui .text-slate-100 {color:#d7ffcb;}
+    #root .matrix-ui .text-slate-300 {color:#b8e7ad;}
+    #root .matrix-ui .text-slate-400 {color:#a3c6a4;}
+    #root .matrix-ui .text-slate-500 {color:#81a589;}
+    #root .matrix-header h1,#root .matrix-ui .matrix-sidebar .font-bold {color:#dcffbe;}
     #root .matrix-ui .field {background:#071d11;border-color:#477557;color:#e4f6e9;}
     #root .matrix-ui .field:focus {border-color:#95ff6d;box-shadow:0 0 0 2px #5bf65c33;}
     #root .matrix-ui .btn-primary {background:#a2ff58;color:#071b0c;font-weight:800;}
@@ -197,8 +207,11 @@
       color:#071b0c;border-color:#d6ffad;box-shadow:0 0 12px #8aff5470;}
     #root .matrix-ui .source-link {background:#092115;border-color:#417851;color:#baff88;}
     #root .matrix-ui .source-link:hover {background:#143c24;border-color:#a2ff58;}
-    #root .matrix-ui .md {color:#e4f6e9;}
-    #root .matrix-ui .md a {color:#b8ff89;}
+    #root .matrix-ui .md {color:#c9fbc0;}
+    #root .matrix-ui .md strong,#root .matrix-ui .md b,
+    #root .matrix-ui .md h1,#root .matrix-ui .md h2,#root .matrix-ui .md h3 {color:#aaff84;}
+    #root .matrix-ui .md a {color:#bfff81;}
+    #root .matrix-ui .chat-assistant-bubble .md {color:#c9fbc0;}
     #root .matrix-ui .md blockquote {border-left-color:#92f873;color:#c0e8c9;}
     #root .matrix-ui .md :not(pre)>code {background:#143822;color:#c5ffa3;}
     #root .matrix-ui .md th {background:#173524;}
@@ -212,8 +225,8 @@
     #root .matrix-ui .free-alert {background:linear-gradient(115deg,#05280d,#0c2514);}
     #root .matrix-hero {background:rgba(4,23,12,.70);border:1px solid #316b44;
       box-shadow:0 0 50px #204e2120;border-radius:22px;max-width:600px;padding:32px 20px;}
-    @media (max-width:640px){.matrix-column{font-size:12px;opacity:calc(var(--alpha,.30) * .75)}
-      #root .matrix-chat {background:rgba(2,12,7,.62);} }
+    @media (max-width:640px){.matrix-column{font-size:12px;}
+      #root .matrix-chat {background:rgba(2,12,7,.10);} }
     @media (prefers-reduced-motion:reduce) {.matrix-column{animation:none;transform:none;}}
   </style>
 </head>
@@ -332,7 +345,7 @@
 <div id="root"></div>
 <script type="text/babel">
 const {useState, useEffect, useLayoutEffect, useRef, useMemo} = React;
-const APP_BUILD = '2026-11-04-matrix-chat-v8';
+const APP_BUILD = '2026-11-04-matrix-chat-v9';
 const STORAGE_KEY = 'llm-workbench-v1';
 const USAGE_KEY = 'llm-workbench-free-only-usage-v1';
 // These are deliberately conservative CLIENT-ONLY stops, NOT the providers' real quotas.
