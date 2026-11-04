@@ -73,6 +73,13 @@ The browser client may directly call **AI Horde** to generate images from the us
 - Image jobs cannot continue across page closure/reload; previously pending jobs are marked interrupted after reopening. Never invent a generated image URL or claim success before Horde completes. An unavailable/unsupported model tool capability must not trigger a paid provider.
 - The same optional AI Horde key, volunteer-worker disclosure, anonymous LAION sharing caveat and browser-only download boundaries remain unchanged.
 
+## Diagram loader failure recovery and self-test (4 November 2026)
+
+- The `text/babel` script must use genuine browser-native ESM import for Mermaid, avoiding Babel transpilation to CommonJS `require`. Keep the Mermaid module version fixed to a tested 12.x release and preserve lazy loading.
+- Validation success requires both `mermaid.parse` and rendering the sanitised SVG. Reuse the rendered SVG in a small in-memory cache rather than duplicating model-inference or render work.
+- Distinguish browser library/network failures from fixable Mermaid source syntax. The former must terminate the diagram attempt immediately, retain/export the user's Mermaid source and show the real underlying error. Only source/diagram-specific errors should consume bounded retry attempts.
+- Provide a built-in test of the Mermaid module and SVG renderer from Diagnostics that requires no inference request and no diagram-generation or web-search credits. Record success/failure clearly in local diagnostics.
+
 ## Model-controlled local Mermaid diagrams (4 November 2026)
 
 - Offer `create_diagram` as a browser-owned tool even with Web search disabled, alongside `generate_image`. The LLM chooses diagrams for explicit requests involving architecture, flowcharts, sequence/class/entity diagrams, timelines and other technical diagrams. Use AI Horde only for requested artistic/raster image generation.
