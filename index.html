@@ -715,7 +715,18 @@ function readSaved() {
         search:{...base.search,...(data.settings?.search||{}),mode:'tavily',tavilyFreeConfirmed:!!data.settings?.search?.tavilyFreeConfirmed},
         freeTierConfirmed:{...base.freeTierConfirmed,...(data.settings?.freeTierConfirmed||{})},
         provider: PROVIDERS[data.settings?.provider] ? data.settings.provider : 'openrouter'},
-      chats: Array.isArray(data.chats) ? data.chats : [],
+      // AI Horde jobs cannot survive a browser reload. Keep their chat cards,
+      // but do not show a permanent 'generating' spinner for dead requests.
+      chats: Array.isArray(data.chats) ? data.chats.map(chat=>({
+        ...chat,messages:Array.isArray(chat.messages)?chat.messages.map(m=>{
+          if(m?.imagePending||(m?.imageProvider==='horde'&&m.status==='streaming'&&!m.imageResult)){
+            return {...m,status:m.status==='streaming'?'stopped':m.status,
+              imagePending:false,imageProgress:null,imageStatus:null,
+              imageError:'The image job was interrupted by a page reload or browser closure. Request a new image to try again.'};
+          }
+          return m;
+        }):[]
+      })) : [],
       activeId: data.activeId || null
     };
   } catch { return {settings:defaults(), chats:[], activeId:null}; }
