@@ -198,6 +198,14 @@ Use this repository for **source code, documentation, commits and version histor
 
 This policy does not prohibit normal Git source storage or ordinary browser localStorage.
 
+## Deferred: factual chart / diagram sanity checks (not a release blocker)
+
+**Observed 4 November 2026:** Tight Arse AI rendered a Milky Way heavy-element pie chart while Web search was off; the percentages were plausible-looking but factually questionable. After the user enabled/requested a search and retried, the chart was much better, but its displayed slices (52%, 23%, 7%, 5%, 5%, 3%, 3%, 2%) already summed to 100% while the legend still included an additional **“Other elements”** category with no visible slice. This illustrates that valid Mermaid syntax and a visually convincing chart do **not** establish accurate data or even complete agreement between the rendered legend and slices.
+
+**Backlog, not for immediate implementation:** distinguish conceptual diagrams from data-driven visualisations. Consider validating numeric values, totals, non-zero categories and labels; allow appropriate rounding tolerance; flag “Other” when it has no actual remainder; distinguish mass fractions from atom counts and clarify units and population; and display uncertainty/provenance for model-supplied scientific figures. Browser-only arithmetic checks can improve internal consistency without using another LLM call. External fact verification is separate: do not silently turn on paid services or Web search when the user has turned it off. Be careful not to falsely present arithmetic checks as scientific verification. Prioritise this after core chat, diagrams and downloads are stable; existing chart behaviour is acceptable for now.
+
+**Tone/branding note (informal joke, not a user-facing error string yet):** owner quip if users demand better results for free: *“Then pay for better! Tight Arse!”* The underlying product goal remains to improve quality while staying free-only. No change to the app UI or messaging is requested now.
+
 ## Acceptance checks for future changes
 
 1. Can the application run as a static webpage, without any required custom backend or installed companion?
