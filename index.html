@@ -1934,6 +1934,7 @@ function Icon({name,size=19,className=''}) {
     spark:<><path d="m12 2 2.1 7.9L22 12l-7.9 2.1L12 22l-2.1-7.9L2 12l7.9-2.1L12 2Z"/></>,
     download:<><path d="M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4"/></>,
     globe:<><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c-4 5-4 13 0 18M12 3c4 5 4 13 0 18"/></>,
+    image:<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 16-5.8-5.8L5 21"/></>,
     activity:<path d="M3 12h4l3-8 4 16 3-8h4"/>,
     layers:<><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></>
   };
@@ -2266,6 +2267,30 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
           <p className="text-[11px] text-slate-500">Counters are based ONLY on requests from this browser. Failed requests still count. They do not reflect other apps/devices, actual provider token usage, or remaining account quota. Changing browser data can reset them.</p>
         </div>
         <div className="border-t border-slate-800 pt-4 space-y-3">
+          <div className="flex items-center justify-between gap-2"><strong className="text-sm text-lime-200 flex items-center gap-2"><Icon name="image" size={18}/> Images · AI Horde (FREE)</strong>
+            <a href="https://aihorde.net/" target="_blank" rel="noopener noreferrer" className="text-xs text-lime-300 underline">AI Horde</a></div>
+          <p className="text-xs text-slate-300 leading-5">The image icon beside the composer switches to text-to-image mode. AI Horde's anonymous public key is used by default: no registration or payment. A personal key is optional and may improve priority. Volunteer workers generate the image, not your chat model.</p>
+          <div><label className="text-xs font-semibold text-slate-300">Personal Horde API key (optional)</label>
+            <input className="field mt-2" type="password" autoComplete="off" placeholder="Empty = anonymous (no registration)"
+              value={value.imageHorde?.key||''}
+              onChange={e=>onChange(v=>({...v,imageHorde:{...v.imageHorde,key:e.target.value}}))}/>
+          </div>
+          <div><label className="text-xs font-semibold text-slate-300">Image size</label>
+            <select className="field mt-2" value={value.imageHorde?.size||512}
+              onChange={e=>onChange(v=>({...v,imageHorde:{...v.imageHorde,size:Number(e.target.value)}}))}>
+              <option value={512}>512 × 512 · faster / better worker availability</option>
+              <option value={768}>768 × 768 · may queue longer</option>
+            </select>
+          </div>
+          <label className="flex gap-2 items-start rounded-xl border border-amber-700/50 bg-amber-950/20 p-3 text-xs leading-5 text-amber-100">
+            <input type="checkbox" className="mt-1 shrink-0 accent-lime-500" checked={!!value.imageHorde?.acknowledged}
+              onChange={e=>onChange(v=>({...v,imageHorde:{...v.imageHorde,acknowledged:e.target.checked}}))}/>
+            <span>I understand image prompts go to third-party volunteer workers. <strong>Anonymous generation may be shared with LAION even if sharing is disabled in the request.</strong> I won't send confidential prompts. Images may expire; I should download them to keep them.</span>
+          </label>
+          <Quota provider="horde"/>
+          <p className="text-[11px] text-slate-500">Local cap: 2 submissions/minute, 20/day. Queue polling doesn't consume more submissions. No paid image APIs or automatic credit purchases.</p>
+        </div>
+        <div className="border-t border-slate-800 pt-4 space-y-3">
           <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 font-semibold text-sm"><Icon name="globe" size={17} className="text-lime-300"/> Web search · FREE only</div><label className="flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" className="accent-lime-500 h-4 w-4" checked={!!value.search.enabled} onChange={e=>patchSearch({enabled:e.target.checked})}/> Default on</label></div>
           <p className="text-xs leading-5 text-amber-200">OpenRouter hosted search was REMOVED because even a free AI model can trigger separately billable searches. Only Tavily FREE Researcher basic search is allowed. No paid-search fallback.</p>
           <div><label className="block text-xs font-semibold text-slate-300 mb-2">Tavily FREE Researcher API key</label><div className="relative"><input className="field pr-12" type={showSearchKey?'text':'password'} autoComplete="off" placeholder="tvly-... (free plan only)" value={value.search.tavilyKey} onChange={e=>patchSearch({tavilyKey:e.target.value,tavilyFreeConfirmed:false})}/><button className="absolute right-3 top-2.5 text-slate-400" aria-label="Show or hide Tavily key" onClick={()=>setShowSearchKey(v=>!v)}><Icon name={showSearchKey?'eyeoff':'eye'}/></button></div><p className="text-xs text-slate-400 mt-2">Free plan = <strong>1,000 credits per calendar month</strong>, then search stops; no payment card required. <a className="text-lime-300 underline" target="_blank" rel="noopener noreferrer" href="https://app.tavily.com/">Create free key</a> · <a className="text-lime-300 underline" target="_blank" rel="noopener noreferrer" href="https://www.tavily.com/pricing">Official quotas</a>.</p></div>
@@ -2327,6 +2352,7 @@ function App() {
   const [drawer,setDrawer]=useState(false),[settingsOpen,setSettingsOpen]=useState(false),[diagnosticsOpen,setDiagnosticsOpen]=useState(false);
   const [draft,setDraft]=useState(''),[attachments,setAttachments]=useState([]),[busy,setBusy]=useState(null),[notice,setNotice]=useState('');
   const [reading,setReading]=useState(false);
+  const [imageMode,setImageMode]=useState(false);
   const [usageRevision,setUsageRevision]=useState(0);
   const [showLatest,setShowLatest]=useState(false);
   const inputRef=useRef(null),fileRef=useRef(null),chatScrollRef=useRef(null),workRef=useRef(null);
