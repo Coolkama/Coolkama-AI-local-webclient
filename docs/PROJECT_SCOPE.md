@@ -73,6 +73,14 @@ The browser client may directly call **AI Horde** to generate images from the us
 - Image jobs cannot continue across page closure/reload; previously pending jobs are marked interrupted after reopening. Never invent a generated image URL or claim success before Horde completes. An unavailable/unsupported model tool capability must not trigger a paid provider.
 - The same optional AI Horde key, volunteer-worker disclosure, anonymous LAION sharing caveat and browser-only download boundaries remain unchanged.
 
+## Browser-owned generated-image downloads (4 November 2026)
+
+- Retain the existing working **Open original** link for previously generated images. Browser navigation to remote AI Horde R2 images is permitted, but a JavaScript cross-origin `fetch` can fail with CORS even if that navigation succeeds.
+- For new AI Horde text-to-image requests, prefer `r2:false` to receive base64 WebP bytes through the authorised API response, then create a local browser Blob download link. Do not introduce a paid proxy or hosted download service to bypass CORS.
+- Store image bytes in origin-local IndexedDB; persist only storage identifiers in chat JSON to avoid exhausting localStorage. Revoke temporary Blob URLs when views are discarded, clean up stored image bytes on conversation deletion, and surface clear errors if local image storage is unavailable.
+- Older remote image links cannot be retroactively downloaded as Blobs without CORS permission. The download control should therefore open those originals for ordinary browser saving rather than reporting a misleading generic network error. New images should use standard `a[download]` browser handling.
+- No change to generation quotas, privacy consent, selected LLM model, free-only boundary or user filesystem access.
+
 ## Streaming chat interface
 
 - Render model-driven web searches and sources **above** the answer, in a single default-collapsed details panel. The header reads "Searching web..." while a web tool executes, then "Searched web" when it finishes. The panel can be expanded to inspect actual queries and source links. Do not show the panel for Web-enabled answers that did not use search.
