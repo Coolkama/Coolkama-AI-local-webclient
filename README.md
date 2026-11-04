@@ -28,11 +28,21 @@ Client-side rate counters are **not** a billing guarantee: use genuine free prov
 
 Source code and documentation only. GitHub Actions have been disabled by the owner; do not enable Actions or add workflows, CI, cache/artefact storage, Packages, Codespaces, Git LFS or other chargeable infrastructure without explicit approval.
 
+## App launch splash
+
+The launch screen is **plain inline HTML/CSS/SVG**, visible before the browser loads Tailwind, React, Babel, PDF.js or the other CDN libraries. Its design is dark, Matrix-green and deliberately grumpy: a cheap, patched-together robot, the Tight Arse AI name and a neon-green animated loading bar. There is **no paid service, additional HTTP image request or runtime dependency** for the included illustration.
+
+The screen is shown on **every fresh page launch**, including reloads. It remains visible for **at least 4,000 ms**, even if React mounts immediately, and **longer when startup is slow**. React's first mounted `App` effect signals readiness through `window.__tightArseSplashReady()`; the splash then reveals the app with a ~460 ms fade. If a CDN fails or React never mounts, the splash stays rather than exposing a broken UI, and after 20 seconds it provides a delayed-startup message. The timer is not triggered by user interaction or navigating between saved chats.
+
+**Artwork note:** The precise generated robot raster from the earlier design conversation was not available as a source asset during this commit. The initial splash includes a self-contained, in-theme SVG stand-in; replace this SVG with the chosen original image once the artwork file is supplied. Do not mistake it for the previously approved raster logo.
+
+Local simulated timing tests cover ready at 0 s, 1 s, 6.5 s, and never ready; the minimum-duration and readiness gates passed. Publishing through GitHub Pages still depends on the repository's existing branch-based Pages configuration.
+
 ## GitHub Pages
 
 For static hosting, select **Settings → Pages → Deploy from a branch → main → /(root)**. The root-level `.nojekyll` file disables Jekyll processing; this repository needs no application build step. If the public site is not published yet, review the Pages publishing status and GitHub's deployment messages. The expected URL is https://coolkama.github.io/Coolkama-AI-local-webclient/ (only after successful publication).
 
-**Confirm that the latest version was actually published:** The bottom of the left-hand chat sidebar displays `Build: 2026-11-03-gemini-discovery-v6`. If the label is missing, the browser is running an older `index.html`, or GitHub Pages has not updated. Open the Pages website with a fresh query string, e.g. `?version=20261103-provider-adapters-v2`, and reload. Query strings can bypass stale browser HTML caches but cannot publish an unbuilt deployment. The GitHub commit on `main` is not proof of a live Pages deployment; inspect **Settings → Pages** for the published source and status. No GitHub Actions or paid hosting infrastructure are enabled by this repository.
+**Confirm that the latest version was actually published:** The bottom of the left-hand chat sidebar displays `Build: 2026-11-04-splash-v7`. If the label is missing, the browser is running an older `index.html`, or GitHub Pages has not updated. Open the Pages website with a fresh query string, e.g. `?version=20261103-provider-adapters-v2`, and reload. Query strings can bypass stale browser HTML caches but cannot publish an unbuilt deployment. The GitHub commit on `main` is not proof of a live Pages deployment; inspect **Settings → Pages** for the published source and status. No GitHub Actions or paid hosting infrastructure are enabled by this repository.
 
 ## Gemini model discovery (native API)
 
