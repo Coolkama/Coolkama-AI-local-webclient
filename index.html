@@ -1015,6 +1015,83 @@ function toolDiagramRequest(call){
   const title=String(args.title||'Diagram').trim().slice(0,100)||'Diagram';
   return {code,title};
 }
+// Mermaid is fetched lazily only when the user creates or opens a diagram.
+// Rendering happens inside this browser: no diagram content is sent to a remote renderer.
+const MERMAID_MODULE_URL='https://cdn.jsdelivr.net/npm/mermaid@12/dist/mermaid.esm.min.mjs';
+let mermaidEnginePromise=null;
+async function getMermaidEngine(){
+  if(!mermaidEnginePromise){
+    mermaidEnginePromise=import(MERMAID_MODULE_URL).then(module=>{
+      const engine=module.default||module;
+      engine.initialize({
+        startOnLoad:false,securityLevel:'strict',theme:'dark',
+        htmlLabels:false,flowchart:{htmlLabels:false,useMaxWidth:true},
+        maxTextSize:12000,maxEdges:120,suppressErrorRendering:true
+      });
+      return engine;
+    }).catch(error=>{
+      mermaidEnginePromise=null;
+      throw new Error('Mermaid library could not load. Check your connection: '+String(error.message||error));
+    });
+  }
+  return mermaidEnginePromise;
+}
+async function validateMermaidInBrowser(code){
+  const engine=await getMermaidEngine();
+  await engine.parse(code,{suppressErrors:false});
+}
+async function renderMermaidSvg(code){
+  const engine=await getMermaidEngine();
+  const id='tightArseDiagram'+uid().replace(/[^a-z0-9]/gi,'');
+  const {svg}=await engine.render(id,code);
+  // A rendered SVG is still untrusted output. Strip scripts, foreign content,
+  // remote resource links and event handlers before displaying or exporting.
+  const clean=DOMPurify.sanitize(svg,{USE_PROFILES:{svg:true,svgFilters:true},
+    FORBID_TAGS:['script','foreignObject','image','a','iframe'],
+    FORBID_ATTR:['href','xlink:href','onload','onclick','onerror']});
+  if(typeof clean!=='string'||!/<svg\b/i.test(clean))
+    throw new Error('Mermaid returned no safe SVG output.');
+  return clean;
+}
+function downloadLocalBlob(blob,name){
+  const url=URL.createObjectURL(blob);
+  try{
+    const a=document.createElement('a');
+    a.href=url;a.download=name;
+    document.body.appendChild(a);a.click();a.remove();
+  }finally{setTimeout(()=>URL.revokeObjectURL(url),15000);}
+}
+function diagramFileName(title,extension){
+  const name=String(title||'diagram').toLowerCase().replace(/[^a-z0-9-]+/g,'-')
+    .replace(/^-+|-+$/g,'').slice(0,52)||'diagram';
+  return 'tight-arse-ai-'+name+'.'+extension;
+}
+async function saveMermaidPng(svg,url,title){
+  const image=new Image();
+  await new Promise((resolve,reject)=>{
+    image.onload=resolve;
+    image.onerror=()=>reject(new Error('The browser could not decode the rendered SVG.'));
+    image.src=url;
+  });
+  const viewBox=/\bviewBox="([^"]+)"/i.exec(svg);
+  const dims=viewBox?viewBox[1].trim().split(/[\s,]+/).map(Number):[];
+  let width=(dims.length===4&&dims[2]>0)?dims[2]:(image.naturalWidth||1000);
+  let height=(dims.length===4&&dims[3]>0)?dims[3]:(image.naturalHeight||700);
+  if(!Number.isFinite(width)||!Number.isFinite(height)||width<=0||height<=0)
+    throw new Error('Invalid diagram dimensions.');
+  const scale=Math.min(2,3200/width,3200/height);
+  const canvas=document.createElement('canvas');
+  canvas.width=Math.max(1,Math.round(width*scale));
+  canvas.height=Math.max(1,Math.round(height*scale));
+  const ctx=canvas.getContext('2d');
+  if(!ctx)throw new Error('Canvas is unavailable in this browser.');
+  ctx.fillStyle='#08170e';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(image,0,0,canvas.width,canvas.height);
+  const png=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+  if(!png)throw new Error('Unable to convert SVG to PNG on this device.');
+  downloadLocalBlob(png,diagramFileName(title,'png'));
+}
 function toolImageRequest(call){
   if(call.function?.name!=='generate_image')throw new Error('Unsupported image tool.');
   let args;
