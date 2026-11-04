@@ -345,12 +345,12 @@
 <div id="root"></div>
 <script type="text/babel">
 const {useState, useEffect, useLayoutEffect, useRef, useMemo} = React;
-const APP_BUILD = '2026-11-04-matrix-chat-v9';
+const APP_BUILD = '2026-11-04-horde-images-v10';
 const STORAGE_KEY = 'llm-workbench-v1';
 const USAGE_KEY = 'llm-workbench-free-only-usage-v1';
 // These are deliberately conservative CLIENT-ONLY stops, NOT the providers' real quotas.
 // They cannot see use from other apps, devices, or keys. Do not promise billing protection.
-const LOCAL_CAPS = {openrouter:{minute:15,day:42},groq:{minute:8,day:100},gemini:{minute:4,day:25},tavily:{month:900}};
+const LOCAL_CAPS = {openrouter:{minute:15,day:42},groq:{minute:8,day:100},gemini:{minute:4,day:25},tavily:{month:900},horde:{minute:2,day:20}};
 const FREE_LINKS = {
   openrouter:'https://openrouter.ai/collections/free-models',
   groq:'https://console.groq.com/docs/rate-limits',
@@ -675,7 +675,8 @@ function outputTokenLimit(profile){
   return value;
 }
 const defaultSearch = () => ({ enabled:false, mode:'tavily', tavilyKey:'', maxResults:4, maxToolSearches:3, tavilyFreeConfirmed:false });
-const defaults = () => ({ provider:'openrouter', temperature:0.7, autoContinue:true, discoveredModels:{}, groqContextMigrationV2:true, groqOutputMigration16kV1:true, systemPrompt:'You are a helpful, accurate assistant. Format code using fenced Markdown code blocks with language identifiers.', profiles:freshProfiles(), search:defaultSearch(), freeTierConfirmed:{openrouter:false,groq:false,gemini:false} });
+const defaultImageHorde = () => ({ key:'', size:512, acknowledged:false });
+const defaults = () => ({ provider:'openrouter', temperature:0.7, autoContinue:true, discoveredModels:{}, imageHorde:defaultImageHorde(), groqContextMigrationV2:true, groqOutputMigration16kV1:true, systemPrompt:'You are a helpful, accurate assistant. Format code using fenced Markdown code blocks with language identifiers.', profiles:freshProfiles(), search:defaultSearch(), freeTierConfirmed:{openrouter:false,groq:false,gemini:false} });
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 const newChat = () => ({ id:uid(), title:'New conversation', createdAt:Date.now(), updatedAt:Date.now(), messages:[] });
 function readSaved() {
@@ -704,6 +705,10 @@ function readSaved() {
     }));
     return {
       settings: {...base, ...(data.settings || {}), groqContextMigrationV2:true, groqOutputMigration16kV1:true, profiles,
+        imageHorde:{...defaultImageHorde(),
+          key:typeof data.settings?.imageHorde?.key==='string'?data.settings.imageHorde.key.slice(0,512):'',
+          size:[512,768].includes(Number(data.settings?.imageHorde?.size))?Number(data.settings.imageHorde.size):512,
+          acknowledged:data.settings?.imageHorde?.acknowledged===true},
         discoveredModels:Object.fromEntries(Object.keys(PROVIDERS).map(k=>[k,
           (Array.isArray(data.settings?.discoveredModels?.[k])?data.settings.discoveredModels[k]:[])
             .filter(id=>typeof id==='string'&&isApprovedModel(k,id)).slice(0,300)])),
@@ -1768,6 +1773,101 @@ const wait = (ms,signal) => new Promise((resolve,reject) => {
   function cancel(){clearTimeout(t);reject(new DOMException('Stopped','AbortError'));}
   signal.addEventListener('abort',cancel,{once:true});
 });
+
+const HORDE_IMAGE_API='https://aihorde.net/api/v2';
+const HORDE_ANON_KEY='0000000000';
+const HORDE_CLIENT_AGENT='TightArseAI:1.0:https://github.com/Coolkama/Coolkama-AI-local-webclient';
+const HORDE_MAX_WAIT_MS=10*60*1000;
+function hordeImageUrl(value){
+  if(typeof value!=='string')throw new Error('AI Horde returned an invalid image.');
+  if(/^https:\/\//i.test(value)){
+    const url=new URL(value);
+    if(url.username||url.password)throw new Error('Image URL contains unsupported credentials.');
+    return url.href;
+  }
+  // Legacy workers may return base64 WebP despite r2:true.
+  if(value.length<9*1024*1024&&value.length>64&&/^[A-Za-z0-9+/=]+$/.test(value))
+    return 'data:image/webp;base64,'+value;
+  throw new Error('AI Horde returned an unsupported image format or address.');
+}
+function hordeGenerationPayload(prompt,size){
+  if(typeof prompt!=='string'||!prompt.trim()||prompt.length>3000)
+    throw new Error('Enter an image prompt between 1 and 3,000 characters.');
+  if(![512,768].includes(size))throw new Error('Unsupported image size.');
+  return {prompt:prompt.trim(),params:{width:size,height:size,steps:20,n:1},
+    nsfw:false,censor_nsfw:true,r2:true,shared:false};
+}
+async function hordeJson(url,options={}){
+  const res=await fetch(url,{cache:'no-store',mode:'cors',...options});
+  let data;
+  try{data=await res.json();}catch{throw new Error('AI Horde returned a non-JSON response (HTTP '+res.status+').');}
+  if(!res.ok||data?.error){
+    const text=String(data?.message||data?.error||'Request rejected').slice(0,260);
+    throw new Error('AI Horde HTTP '+res.status+': '+text);
+  }
+  return data;
+}
+async function requestHordeImage({prompt,size=512,key='',signal,onAccepted=()=>{},onProgress=()=>{},onPhase=()=>{}}){
+  const headers={'apikey':(key.trim()||HORDE_ANON_KEY),
+    'Client-Agent':HORDE_CLIENT_AGENT,'Content-Type':'application/json'};
+  const payload=hordeGenerationPayload(prompt,size);
+  if(signal?.aborted)throw new DOMException('Stopped','AbortError');
+  const queued=await hordeJson(HORDE_IMAGE_API+'/generate/async',{
+    method:'POST',headers,signal,body:JSON.stringify(payload)});
+  if(typeof queued.id!=='string'||!queued.id.trim())throw new Error('AI Horde accepted the request without a job ID.');
+  const id=queued.id;
+  onAccepted(id);
+  onPhase('Queued on AI Horde');
+  const began=performance.now();
+  while(true){
+    if(signal?.aborted)throw new DOMException('Stopped','AbortError');
+    if(performance.now()-began>HORDE_MAX_WAIT_MS)throw new Error('AI Horde queue timed out after ten minutes. Try again when workers are available.');
+    // Horde recommends checking with /check rather than repeatedly fetching images.
+    await wait(3000,signal);
+    const state=await hordeJson(HORDE_IMAGE_API+'/generate/check/'+encodeURIComponent(id),{
+      method:'GET',headers:{'Client-Agent':HORDE_CLIENT_AGENT},signal});
+    if(state.faulted)throw new Error('AI Horde reported a failed image job.');
+    const queue=Number(state.queue_position),estimate=Number(state.wait_time);
+    onProgress({queue:Number.isFinite(queue)&&queue>=0?queue:null,
+      seconds:Number.isFinite(estimate)&&estimate>=0?estimate:null,
+      working:Number(state.processing||0)>0,
+      finished:Number(state.finished||0)>0});
+    if(!state.done)continue;
+    const result=await hordeJson(HORDE_IMAGE_API+'/generate/status/'+encodeURIComponent(id),{
+      method:'GET',headers:{'Client-Agent':HORDE_CLIENT_AGENT},signal});
+    const images=Array.isArray(result.generations)?result.generations:[];
+    if(!images.length)throw new Error('AI Horde finished but returned no image.');
+    const item=images[0];
+    if(item.censored)throw new Error('AI Horde censored the generated image.');
+    return {url:hordeImageUrl(item.img),model:String(item.model||'AI Horde worker').slice(0,140),
+      seed:String(item.seed??'').slice(0,60),requestId:id,size,createdAt:Date.now()};
+  }
+}
+async function cancelHordeImage(id,key=''){
+  if(typeof id!=='string'||!id.trim())return;
+  try{
+    await fetch(HORDE_IMAGE_API+'/generate/status/'+encodeURIComponent(id),{
+      method:'DELETE',mode:'cors',cache:'no-store',
+      headers:{'apikey':key.trim()||HORDE_ANON_KEY,'Client-Agent':HORDE_CLIENT_AGENT}
+    });
+  }catch{} // Best effort only; Stop must never block on network cleanup.
+}
+async function saveHordeImage(url,requestId){
+  // Download only when the remote image permits CORS. An Open original link
+  // is always displayed as an alternative for images behind strict CORS.
+  const response=await fetch(url,{mode:'cors'});
+  if(!response.ok)throw new Error('Image download HTTP '+response.status);
+  const blob=await response.blob();
+  if(!blob.type.startsWith('image/'))throw new Error('The returned resource was not an image.');
+  const ext=blob.type.includes('png')?'png':blob.type.includes('jpeg')?'jpg':'webp';
+  const href=URL.createObjectURL(blob);
+  try{
+    const a=document.createElement('a');a.href=href;
+    a.download='tight-arse-ai-'+String(requestId||'image').slice(0,40)+'.'+ext;
+    document.body.appendChild(a);a.click();a.remove();
+  }finally{setTimeout(()=>URL.revokeObjectURL(href),3000);}
+}
+
 async function streamChatWithRateWait(options,onReserved=()=>{}){
   const {provider,signal,trace={}}=options;
   let providerRetries=0,localWaits=0;
