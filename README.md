@@ -4,6 +4,12 @@ A standalone, mobile-first, free-tier-first LLM chat and web-search client built
 
 > **Project requirements:** [Scope and guardrails](docs/PROJECT_SCOPE.md). Read these before making changes.
 
+## Mermaid rendering fix (build v14)
+
+The initial v13 diagram tool could produce repeated diagram-validation failures even with valid Mermaid source. The likely root cause is that this app uses Babel Standalone for JSX, which can transform `import()` into a browser-incompatible CommonJS `require()`. v14 loads a **version-pinned Mermaid 12.2.0 ES module using native browser import** outside Babel's transformation, then both parses the diagram and actually renders/sanitises its SVG before replying `accepted` to the model. Successful SVG is held in a small in-memory cache for the chat card to reuse.
+
+A **Mermaid module-loading failure** now stops the turn immediately: repeated calls to the LLM cannot repair missing browser code, so it reports a specific error instead of wasting three validation attempts. The source supplied by the LLM is retained with a .mmd download option even if rendering is unavailable. Actual Mermaid syntax/rendering errors still allow up to three attempts, with diagnostics recording the original failure. Open **Diagnostics → Test Mermaid renderer** to load and render a tiny local Mermaid sample **without calling Groq, Gemini, OpenRouter or any paid service**. If that test succeeds but the model-created diagram fails, check the diagram-tool validation details or supplied Mermaid code. Browser end-to-end loading still needs confirmation on Android Chrome.
+
 ## AI-directed technical diagrams — Mermaid (build v13)
 
 A tool-capable free chat model may now call browser-owned `create_diagram({code,title?})` whenever the user asks for a **diagram**, with no composer mode selection and **Web search switched off if desired**. The model supplies standard Mermaid diagrams-as-code (flowcharts, architecture, sequence, class, ER, state, timelines, Gantt and supported Mermaid types). The browser validates the tool arguments, imports the open-source Mermaid v12 ES module **on demand** from jsDelivr, checks Mermaid syntax locally and renders the diagram inside the same assistant message. The diagram source is **not uploaded to a diagram-rendering API**; jsDelivr only serves the generic Mermaid JavaScript library. CDN loading requires an internet connection unless the browser already has it cached.
