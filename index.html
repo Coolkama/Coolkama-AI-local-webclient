@@ -1064,17 +1064,14 @@ const MERMAID_MODULE_URL='https://cdn.jsdelivr.net/npm/mermaid@12.2.0/dist/merma
 const importMermaidNative=new Function('url','return import(url)');
 let mermaidEnginePromise=null;
 const mermaidSvgCache=new Map();
+// Mermaid has global configuration, so different themes must render serially.
+let mermaidRenderQueue=Promise.resolve();
 async function getMermaidEngine(){
   if(!mermaidEnginePromise){
     mermaidEnginePromise=importMermaidNative(MERMAID_MODULE_URL).then(module=>{
       const engine=module.default||module;
       if(typeof engine.initialize!=='function'||typeof engine.parse!=='function'||typeof engine.render!=='function')
         throw new Error('Mermaid API is missing required functions.');
-      engine.initialize({
-        startOnLoad:false,securityLevel:'strict',theme:'dark',
-        htmlLabels:false,flowchart:{htmlLabels:false,useMaxWidth:true},
-        maxTextSize:12000,maxEdges:120,suppressErrorRendering:true
-      });
       return engine;
     }).catch(error=>{
       mermaidEnginePromise=null;
@@ -1086,28 +1083,54 @@ async function getMermaidEngine(){
   }
   return mermaidEnginePromise;
 }
-async function validateMermaidInBrowser(code){
-  const engine=await getMermaidEngine();
-  await engine.parse(code,{suppressErrors:false});
-  // Validate actual rendering as well, not merely valid syntax.
-  // The sanitized SVG is cached for the chat preview.
-  await renderMermaidSvg(code);
+function mermaidPresentation(source){
+  const input=typeof source==='string'?{code:source}:source;
+  if(!input||typeof input.code!=='string')
+    throw new Error('Mermaid source is missing.');
+  const background=normaliseDiagramBackground(input.background);
+  const theme=normaliseDiagramTheme(input.theme,background);
+  return {code:input.code,background,theme};
 }
-async function renderMermaidSvg(code){
-  if(mermaidSvgCache.has(code))return mermaidSvgCache.get(code);
-  const engine=await getMermaidEngine();
-  const id='tightArseDiagram'+uid().replace(/[^a-z0-9]/gi,'');
-  const {svg}=await engine.render(id,code);
-  // A rendered SVG is still untrusted output. Strip scripts, foreign content,
-  // remote resource links and event handlers before displaying or exporting.
-  const clean=DOMPurify.sanitize(svg,{USE_PROFILES:{svg:true,svgFilters:true},
-    FORBID_TAGS:['script','foreignObject','image','a','iframe'],
-    FORBID_ATTR:['href','xlink:href','onload','onclick','onerror']});
-  if(typeof clean!=='string'||!/<svg\b/i.test(clean))
-    throw new Error('Mermaid returned no safe SVG output.');
-  if(mermaidSvgCache.size>=8)mermaidSvgCache.delete(mermaidSvgCache.keys().next().value);
-  mermaidSvgCache.set(code,clean);
-  return clean;
+function applyMermaidBackground(svg,background){
+  if(background==='transparent')return svg;
+  // Background is strictly colour-validated before becoming an SVG attribute.
+  // This rectangle is part of the exported image, not only the webpage CSS.
+  return svg.replace(/<svg\b[^>]*>/i,root=>root+
+    '<rect width="100%" height="100%" fill="'+background+'"/>');
+}
+async function validateMermaidInBrowser(diagram){
+  // A successful tool call means that both Mermaid parsing AND SVG rendering
+  // succeeded, including the requested theme and canvas colour.
+  await renderMermaidSvg(diagram);
+}
+function renderMermaidSvg(source){
+  const diagram=mermaidPresentation(source);
+  const key=JSON.stringify(diagram);
+  if(mermaidSvgCache.has(key))return Promise.resolve(mermaidSvgCache.get(key));
+  const pending=mermaidRenderQueue.catch(()=>{}).then(async()=>{
+    if(mermaidSvgCache.has(key))return mermaidSvgCache.get(key);
+    const engine=await getMermaidEngine();
+    engine.initialize({
+      startOnLoad:false,securityLevel:'strict',theme:diagram.theme,
+      htmlLabels:false,flowchart:{htmlLabels:false,useMaxWidth:true},
+      maxTextSize:12000,maxEdges:120,suppressErrorRendering:true
+    });
+    await engine.parse(diagram.code,{suppressErrors:false});
+    const id='tightArseDiagram'+uid().replace(/[^a-z0-9]/gi,'');
+    const {svg}=await engine.render(id,diagram.code);
+    // Sanitize model-derived SVG and inject only a validated fill value.
+    const clean=DOMPurify.sanitize(svg,{USE_PROFILES:{svg:true,svgFilters:true},
+      FORBID_TAGS:['script','foreignObject','image','a','iframe'],
+      FORBID_ATTR:['href','xlink:href','onload','onclick','onerror']});
+    if(typeof clean!=='string'||!/<svg\b/i.test(clean))
+      throw new Error('Mermaid returned no safe SVG output.');
+    const painted=applyMermaidBackground(clean,diagram.background);
+    if(mermaidSvgCache.size>=8)mermaidSvgCache.delete(mermaidSvgCache.keys().next().value);
+    mermaidSvgCache.set(key,painted);
+    return painted;
+  });
+  mermaidRenderQueue=pending.catch(()=>{});
+  return pending;
 }
 function downloadLocalBlob(blob,name){
   const url=URL.createObjectURL(blob);
@@ -1122,7 +1145,7 @@ function diagramFileName(title,extension){
     .replace(/^-+|-+$/g,'').slice(0,52)||'diagram';
   return 'tight-arse-ai-'+name+'.'+extension;
 }
-async function saveMermaidPng(svg,url,title){
+async function saveMermaidPng(svg,url,title,background='white'){
   const image=new Image();
   await new Promise((resolve,reject)=>{
     image.onload=resolve;
@@ -1141,8 +1164,11 @@ async function saveMermaidPng(svg,url,title){
   canvas.height=Math.max(1,Math.round(height*scale));
   const ctx=canvas.getContext('2d');
   if(!ctx)throw new Error('Canvas is unavailable in this browser.');
-  ctx.fillStyle='#08170e';
-  ctx.fillRect(0,0,canvas.width,canvas.height);
+  const canvasBackground=normaliseDiagramBackground(background);
+  if(canvasBackground!=='transparent'){
+    ctx.fillStyle=canvasBackground;
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+  }
   ctx.drawImage(image,0,0,canvas.width,canvas.height);
   const png=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
   if(!png)throw new Error('Unable to convert SVG to PNG on this device.');
