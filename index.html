@@ -345,7 +345,7 @@
 <div id="root"></div>
 <script type="text/babel">
 const {useState, useEffect, useLayoutEffect, useRef, useMemo} = React;
-const APP_BUILD = '2026-11-04-mermaid-loader-fix-v14';
+const APP_BUILD = '2026-11-04-mermaid-white-background-v15';
 const STORAGE_KEY = 'llm-workbench-v1';
 const USAGE_KEY = 'llm-workbench-free-only-usage-v1';
 // These are deliberately conservative CLIENT-ONLY stops, NOT the providers' real quotas.
@@ -989,20 +989,58 @@ const CREATE_DIAGRAM_TOOL={
     description:'Create an accurate, editable technical diagram (flowchart, architecture, sequence, UML class, ERD, state diagram, timeline, Gantt) from Mermaid source. Use when the user requests a diagram rather than a photorealistic or artistic image. The browser validates and renders Mermaid locally; no remote diagram server, registration or payment. You may build on previously created diagram source provided in conversation. Return only source and optional title; never embed HTML or scripts.',
     parameters:{type:'object',properties:{
       code:{type:'string',description:'Complete Mermaid diagram source starting with flowchart, graph, sequenceDiagram, classDiagram, erDiagram, stateDiagram-v2, gantt, timeline, mindmap or another supported Mermaid directive. Max 12,000 characters. Do not surround with Markdown fences.'},
-      title:{type:'string',description:'Optional concise diagram title, at most 100 characters.'}
+      title:{type:'string',description:'Optional concise diagram title, at most 100 characters.'},
+      background:{type:'string',description:'Canvas background colour; defaults to white. Use white, transparent, darkgreen, black, a standard CSS named colour or a hex colour such as #ffffff or #08170e. Applied to preview, SVG and PNG exports.'},
+      theme:{type:'string',enum:['default','neutral','dark'],description:'Optional text and node palette. Usually default on white/light backgrounds and dark on dark backgrounds.'}
     },required:['code'],additionalProperties:false}
   }
 };
 const ALL_BROWSER_TOOLS=[...WEB_SEARCH_TOOLS,IMAGE_GENERATION_TOOL,CREATE_DIAGRAM_TOOL];
+function normaliseDiagramBackground(input){
+  const value=(input===undefined||input===null?'white':String(input)).trim().toLowerCase();
+  if(/^(transparent|[a-z]{3,20})$/.test(value)){
+    if(value==='transparent')return value;
+    if(typeof CSS!=='undefined'&&typeof CSS.supports==='function'&&CSS.supports('color',value))return value;
+    // The standalone validator used in tests may not have browser CSS globals.
+    if(['white','black','darkgreen','green','navy','blue','red','gray','grey','lightgray',
+         'lightgrey','ivory','beige','mintcream','aliceblue','whitesmoke','darkslategray'].includes(value))return value;
+  }
+  if(/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/.test(value))return value;
+  const rgb=/^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/.exec(value);
+  if(rgb){
+    const parts=rgb.slice(1).map(Number);
+    if(parts.every(x=>x>=0&&x<=255))return 'rgb('+parts.join(', ')+')';
+  }
+  throw new Error('Diagram background must be a CSS colour name, #RGB, #RRGGBB or rgb(0–255, 0–255, 0–255).');
+}
+function isDarkDiagramBackground(background){
+  const value=String(background||'white').toLowerCase();
+  if(['black','darkgreen','navy','darkslategray','midnightblue','darkblue','darkslateblue'].includes(value))return true;
+  let rgb=null;
+  if(/^#[0-9a-f]{3}$/.test(value))rgb=[1,2,3].map(n=>parseInt(value[n]+value[n],16));
+  else if(/^#[0-9a-f]{6}$/.test(value))rgb=[1,3,5].map(n=>parseInt(value.slice(n,n+2),16));
+  else if(value.startsWith('rgb('))rgb=(value.match(/\d+/g)||[]).map(Number);
+  return !!(rgb&&rgb.length===3&&(rgb[0]*0.299+rgb[1]*0.587+rgb[2]*0.114)<140);
+}
+function normaliseDiagramTheme(input,background){
+  if(input!==undefined&&input!==null&&input!==''){
+    if(!['default','neutral','dark'].includes(input))
+      throw new Error('Diagram theme must be default, neutral or dark.');
+    return input;
+  }
+  return isDarkDiagramBackground(background)?'dark':'default';
+}
 function toolDiagramRequest(call){
   if(call.function?.name!=='create_diagram')throw new Error('Unsupported diagram tool.');
   let args;
   try{args=JSON.parse(call.function.arguments||'{}');}
   catch{throw new Error('Model returned invalid create_diagram JSON arguments.');}
   if(!args||typeof args!=='object'||Array.isArray(args)||
-     typeof args.code!=='string'||Object.keys(args).some(k=>!['code','title'].includes(k))||
-     (args.title!==undefined&&typeof args.title!=='string'))
-    throw new Error('create_diagram accepts Mermaid code and optional title only.');
+     typeof args.code!=='string'||Object.keys(args).some(k=>!['code','title','background','theme'].includes(k))||
+     (args.title!==undefined&&typeof args.title!=='string')||
+     (args.background!==undefined&&typeof args.background!=='string')||
+     (args.theme!==undefined&&typeof args.theme!=='string'))
+    throw new Error('create_diagram accepts Mermaid code, optional title, background and theme only.');
   let code=args.code.trim();
   const fence=/^\x60{3,}mermaid\s*\n([\s\S]*?)\n\x60{3,}$/i.exec(code);
   if(fence)code=fence[1].trim();
@@ -1013,7 +1051,9 @@ function toolDiagramRequest(call){
   if(!/^(?:flowchart|graph|sequenceDiagram|classDiagram|erDiagram|stateDiagram(?:-v2)?|gantt|timeline|mindmap|journey|pie|quadrantChart|gitGraph|requirementDiagram|C4Context|C4Container|C4Component|sankey-beta|xychart-beta|block-beta|architecture-beta|packet-beta|kanban|treemap-beta|radar-beta)\b/i.test(code))
     throw new Error('Source must begin with a supported Mermaid diagram type.');
   const title=String(args.title||'Diagram').trim().slice(0,100)||'Diagram';
-  return {code,title};
+  const background=normaliseDiagramBackground(args.background);
+  const theme=normaliseDiagramTheme(args.theme,background);
+  return {code,title,background,theme};
 }
 // Mermaid is fetched lazily only when the user creates or opens a diagram.
 // Rendering happens inside this browser: no diagram content is sent to a remote renderer.
@@ -1167,7 +1207,7 @@ function parseTextualWebCalls(value) {
   const calls=[];
   for(const block of blocks){
     const name=block[1],params={},inner=block[2];
-    const matcher=/<parameter name="(query|time_range|index|prompt|code|title)">([\s\S]*?)<\/parameter>/g;
+    const matcher=/<parameter name="(query|time_range|index|prompt|code|title|background|theme)">([\s\S]*?)<\/parameter>/g;
     const fields=[...inner.matchAll(matcher)];
     if(!fields.length||inner.replace(matcher,'').trim())
       return {error:'The model supplied malformed textual tool arguments.'};
