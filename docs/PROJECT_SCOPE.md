@@ -73,6 +73,14 @@ The browser client may directly call **AI Horde** to generate images from the us
 - Image jobs cannot continue across page closure/reload; previously pending jobs are marked interrupted after reopening. Never invent a generated image URL or claim success before Horde completes. An unavailable/unsupported model tool capability must not trigger a paid provider.
 - The same optional AI Horde key, volunteer-worker disclosure, anonymous LAION sharing caveat and browser-only download boundaries remain unchanged.
 
+## Assistant response action bar (4 November 2026)
+
+- Display unobtrusive labelled **Copy**, **Speak/Stop**, **Retry** buttons immediately below every assistant reply bubble, without crowding or changing the Matrix-green theme or existing code-block actions.
+- Copy should capture the response text, including Mermaid diagram source where relevant, and use the user's browser clipboard only. Show actionable failure/success feedback; never call a provider to copy.
+- Speech should use browser-native text-to-speech, not a paid synthesis API. Strip markup, chunk long messages for mobile browsers, allow Stop/toggle and cancel playback on chat switch/new model generation. Avoid performing Markdown parsing on every streaming token. Do not claim that the user's browser necessarily synthesises voices offline.
+- Retry uses the original user input and attachments with the current free provider configuration, and consumes normal free-use allowances. It is **not** a textual continuation. Regenerate the latest answer in place; for older assistant messages create a fresh conversation branch from the original user turn, keeping subsequent history in the original conversation safe. Existing browser-owned AI Horde direct image responses may retry without an extra LLM call. Respect image privacy consent, existing quota checks, and stop/cancel.
+- Keep shared generated-image blobs available as long as any branch references them. No backend, GitHub Actions, hidden paid fallbacks or remote clipboard/speech APIs.
+
 ## Diagram background styling (4 November 2026)
 
 - Default Mermaid diagrams to a white canvas and legible light theme in chat, **without** changing the app's Matrix-green styling.
