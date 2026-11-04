@@ -64,6 +64,15 @@ The browser client may directly call **AI Horde** to generate images from the us
 - Display generated images inside the chat and offer ordinary browser-controlled downloads; image generation does not grant permission to modify existing files. Document temporary remote URLs and CORS limitations.
 - Browser-side, purely local WebGPU diffusion is a *possible future* second provider, not a requirement of this first AI Horde implementation. Avoid bundling multi-gigabyte models into `index.html`.
 
+## Model-directed browser image tool (agreed 4 November 2026)
+
+- Advertise a strictly validated `generate_image({prompt})` browser-owned function to tool-capable inference models even when the globe Web-search toggle is off. The model decides if the user's explicit request calls for image creation; it must not call this tool just because an image is being discussed or a retrieved page asks it to.
+- Keep a separate **one image tool request per user turn** limit; retain all existing AI Horde local quotas, free-only safeguards and optional manual composer image mode. The selected text provider stays selected and cannot access paid image-generation features.
+- On the first model-selected request, if privacy consent was not previously accepted, show the image prompt and an explicit approval action in that assistant message **before any third-party image submission**. After approval, the browser generates without another model call. Consent remains revocable in Settings.
+- Return a small, truthful tool result (`accepted`, `consent_required` or error) to the LLM immediately. Launch the accepted AI Horde job inside the browser and show queued/generating/finished/error states in the same assistant reply, independent of the model's text generation. Keep Stop/cancellation functional until the image job finishes.
+- Image jobs cannot continue across page closure/reload; previously pending jobs are marked interrupted after reopening. Never invent a generated image URL or claim success before Horde completes. An unavailable/unsupported model tool capability must not trigger a paid provider.
+- The same optional AI Horde key, volunteer-worker disclosure, anonymous LAION sharing caveat and browser-only download boundaries remain unchanged.
+
 ## Streaming chat interface
 
 - Render model-driven web searches and sources **above** the answer, in a single default-collapsed details panel. The header reads "Searching web..." while a web tool executes, then "Searched web" when it finishes. The panel can be expanded to inspect actual queries and source links. Do not show the panel for Web-enabled answers that did not use search.
