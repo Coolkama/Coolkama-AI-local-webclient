@@ -4,6 +4,12 @@ A standalone, mobile-first, free-tier-first LLM chat and web-search client built
 
 > **Project requirements:** [Scope and guardrails](docs/PROJECT_SCOPE.md). Read these before making changes.
 
+## Diagram backgrounds and themes (build v15)
+
+The **in-chat Mermaid diagram preview now defaults to a white canvas** with Mermaid's readable default light theme, independently of the Matrix-green app interface. The `create_diagram` tool accepts optional `background` (CSS colour name, `#RGB`, `#RRGGBB`, `rgb(...)`, or `transparent`) and `theme` (`default`, `neutral`, or `dark`). For example, asking for a dark-green canvas sets `background:"darkgreen"` and defaults to a dark theme; asking to make the background white sets `background:"white"` and uses a light theme unless the model explicitly overrides it. **Node colours continue to be controlled by Mermaid source** independently of the canvas.
+
+The canvas colour is written into the sanitised SVG as a background rectangle (except when transparent), is used in the in-chat preview, and is applied to PNG downloads as well. SVG, PNG and chat preview therefore share the same intended background. Diagram code, title, background and theme are stored together in browser chat history and passed to the LLM on follow-up edits, so updating an individual node does not inadvertently reset the background. Older stored diagrams without style fields display on white by default. Different Mermaid themes are rendered sequentially to avoid cross-contamination from Mermaid's global configuration; the small SVG cache incorporates both the canvas colour and theme.
+
 ## Mermaid rendering fix (build v14)
 
 The initial v13 diagram tool could produce repeated diagram-validation failures even with valid Mermaid source. The likely root cause is that this app uses Babel Standalone for JSX, which can transform `import()` into a browser-incompatible CommonJS `require()`. v14 loads a **version-pinned Mermaid 12.2.0 ES module using native browser import** outside Babel's transformation, then both parses the diagram and actually renders/sanitises its SVG before replying `accepted` to the model. Successful SVG is held in a small in-memory cache for the chat card to reuse.
