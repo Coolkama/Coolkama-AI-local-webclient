@@ -2164,12 +2164,10 @@ function Message({message,streaming,onContinue,canContinue=false,onApproveImage,
                   target="_blank" rel="noopener noreferrer">
                   <Icon name="download" size={15}/> Open image to save
                 </a>
-              :<button className="btn btn-primary" type="button" disabled={!imageAsset.src}
-                  onClick={async()=>{try{
-                    await saveHordeImage(message.imageResult);
-                  }catch(e){window.alert('Image download unavailable: '+e.message);}}}>
+              :imageAsset.src?<a className="btn btn-primary" href={imageAsset.src}
+                  download={'tight-arse-ai-'+String(message.imageResult.requestId||'image').slice(0,40)+'.webp'}>
                   <Icon name="download" size={15}/> Download image
-                </button>}
+                </a>:<span className="text-xs text-slate-400">Loading image for download…</span>}
             {imageAsset.src&&<a className="btn btn-soft border border-emerald-700/70" href={imageAsset.src}
               target="_blank" rel="noopener noreferrer">Open original</a>}
           </div>
