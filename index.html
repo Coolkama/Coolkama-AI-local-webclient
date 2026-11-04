@@ -3045,8 +3045,8 @@ function App() {
       <header className="matrix-header safe-top shrink-0 border-b border-slate-800/80 bg-slate-950/90 backdrop-blur">
         <div className="h-16 px-3 sm:px-5 flex items-center gap-2 sm:gap-4">
           <button className="md:hidden p-2 text-slate-300" onClick={()=>setDrawer(true)} aria-label="Open conversations"><Icon name="menu" size={22}/></button>
-          <div className="flex-1 min-w-0"><h1 className="text-sm sm:text-base font-semibold truncate">{active?.title||'New conversation'}</h1><p className="text-[11px] text-emerald-300 truncate">FREE ONLY · {profile.model||'Choose a model'}</p></div>
-          <button className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-[10px] sm:text-xs text-slate-300 max-w-[105px] sm:max-w-none" onClick={()=>setSettingsOpen(true)}><span className={`w-1.5 h-1.5 rounded-full ${settings.provider==='demo'?'bg-amber-400':'bg-emerald-400'}`}/>{PROVIDERS[settings.provider].name}</button>
+          <div className="flex-1 min-w-0"><h1 className="text-sm sm:text-base font-semibold truncate">{active?.title||'New conversation'}</h1><p className="text-[11px] text-emerald-300 truncate">{imageMode?'FREE IMAGE · AI Horde volunteer workers':'FREE ONLY · '+(profile.model||'Choose a model')}</p></div>
+          <button className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-[10px] sm:text-xs text-slate-300 max-w-[105px] sm:max-w-none" onClick={()=>setSettingsOpen(true)}><span className={`w-1.5 h-1.5 rounded-full ${imageMode?'bg-lime-400':settings.provider==='demo'?'bg-amber-400':'bg-emerald-400'}`}/>{imageMode?'AI Horde':PROVIDERS[settings.provider].name}</button>
           <button className="btn btn-soft !p-2.5" title="Diagnostics" aria-label="Diagnostics" onClick={()=>setDiagnosticsOpen(true)}><Icon name="activity" size={19}/></button>
           <button className="btn btn-soft !p-2.5" title="Settings" aria-label="Settings" onClick={()=>setSettingsOpen(true)}><Icon name="settings" size={19}/></button>
         </div>
