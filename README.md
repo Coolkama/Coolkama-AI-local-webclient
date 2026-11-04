@@ -4,6 +4,16 @@ A standalone, mobile-first, free-tier-first LLM chat and web-search client built
 
 > **Project requirements:** [Scope and guardrails](docs/PROJECT_SCOPE.md). Read these before making changes.
 
+## Assistant reply actions — Copy, Speak, Retry (build v16)
+
+Each assistant reply now has a compact **three-icon action bar immediately beneath its chat bubble** (including older messages, generated diagrams and image replies):
+
+- **Copy:** copies the full raw Markdown reply to the system clipboard (including code fences). When the reply contains a Mermaid diagram, its editable Mermaid source is appended. Uses the browser Clipboard API with a fallback and briefly displays *Copied*.
+- **Speak / Stop:** reads the answer aloud through the browser's built-in `speechSynthesis` service, with no additional LLM request, paid text-to-speech API or key. Markdown is converted to readable text; fenced code blocks are announced but skipped. Longer replies are spoken in short chunks to improve mobile compatibility, and the icon changes to Stop while speaking. Speech stops when the user taps Stop, switches conversations, sends/retries another request or leaves the app. Voice availability, accent, reliability and whether a browser voice uses remote facilities depend on the device/browser.
+- **Retry:** regenerates using the **original preceding user message and its selected attachments** with current free-model/search settings; it is a fresh, quota-counted model request, not a continuation of the previous answer. The newest reply is replaced within the chat; retrying an older reply creates a separate `Retry · …` conversation containing the history up to that user request, preserving the original conversation and its later messages. Tool support (Mermaid, AI Horde and web search) remains available under the existing free-only/consent restrictions. Replies sent through the manual AI Horde mode retry directly through AI Horde without paying an unnecessary model request. Shared browser-stored images are retained while any chat branch still references them.
+
+Actions are disabled where appropriate while a model response is generating or another operation is running. The compact 36px buttons are accessible via labels/tooltips. No new application mode, backend, subscription or remote speech service is required. Actual Android Chrome speech and Retry flow should be tested live; unit/syntax checks alone do not establish browser compatibility.
+
 ## Diagram backgrounds and themes (build v15)
 
 The **in-chat Mermaid diagram preview now defaults to a white canvas** with Mermaid's readable default light theme, independently of the Matrix-green app interface. The `create_diagram` tool accepts optional `background` (CSS colour name, `#RGB`, `#RRGGBB`, `rgb(...)`, or `transparent`) and `theme` (`default`, `neutral`, or `dark`). For example, asking for a dark-green canvas sets `background:"darkgreen"` and defaults to a dark theme; asking to make the background white sets `background:"white"` and uses a light theme unless the model explicitly overrides it. **Node colours continue to be controlled by Mermaid source** independently of the canvas.
