@@ -4,6 +4,14 @@ A standalone, mobile-first, free-tier-first LLM chat and web-search client built
 
 > **Project requirements:** [Scope and guardrails](docs/PROJECT_SCOPE.md). Read these before making changes.
 
+## AI-directed technical diagrams — Mermaid (build v13)
+
+A tool-capable free chat model may now call browser-owned `create_diagram({code,title?})` whenever the user asks for a **diagram**, with no composer mode selection and **Web search switched off if desired**. The model supplies standard Mermaid diagrams-as-code (flowcharts, architecture, sequence, class, ER, state, timelines, Gantt and supported Mermaid types). The browser validates the tool arguments, imports the open-source Mermaid v12 ES module **on demand** from jsDelivr, checks Mermaid syntax locally and renders the diagram inside the same assistant message. The diagram source is **not uploaded to a diagram-rendering API**; jsDelivr only serves the generic Mermaid JavaScript library. CDN loading requires an internet connection unless the browser already has it cached.
+
+Rendered diagrams appear with **Download SVG**, **PNG** and **Source (.mmd)** actions, plus a collapsible source preview. The rendered and sanitised SVG is displayed through an `<img>` using a local Blob URL; PNG export rasterises that same image in the browser. SVG/PNG may differ slightly in typography from the on-screen browser view. Source, not generated SVG markup or binary images, is persisted in the normal chat history, allowing refreshes and questions such as **“Add a cache between the API and database”** to pass the prior diagram back to the model for a complete revised `create_diagram` call. Existing conversations, image generation and Tavily web search remain separate and available.
+
+**Safeguards:** diagram code is limited to 12,000 characters; model input may only specify `code` and an optional short `title`. Dangerous Mermaid configuration directives, link/click actions and callbacks are forbidden. Mermaid runs with `securityLevel:'strict'`, HTML labels disabled and bounded diagram size; SVG output is further sanitised before preview/export. At most **one valid diagram per user turn**, with up to three validation attempts. Invalid Mermaid syntax is returned to the model as a tool error so it can repair the diagram within the existing free inference budget. No AI Horde generation, paid diagram API, backend service, GitHub Actions or new server-side storage is involved. Not all free models support function calls reliably; the existing narrowly validated textual tool-call fallback also recognises `create_diagram` requests.
+
 ## Reliable image downloads (build v12)
 
 The previous **Download image** button attempted a JavaScript `fetch()` from an AI Horde Cloudflare R2 image URL. Android Chrome could **open the image normally** but refused that cross-origin fetch (CORS), so the button displayed *Failed to fetch*. The existing **Open original** action works and is retained for older images.
