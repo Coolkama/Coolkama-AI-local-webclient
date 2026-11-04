@@ -345,7 +345,7 @@
 <div id="root"></div>
 <script type="text/babel">
 const {useState, useEffect, useLayoutEffect, useRef, useMemo} = React;
-const APP_BUILD = '2026-11-04-mermaid-white-background-v15';
+const APP_BUILD = '2026-11-04-reply-actions-v16';
 const STORAGE_KEY = 'llm-workbench-v1';
 const USAGE_KEY = 'llm-workbench-free-only-usage-v1';
 // These are deliberately conservative CLIENT-ONLY stops, NOT the providers' real quotas.
@@ -2266,7 +2266,10 @@ function Icon({name,size=19,className=''}) {
     globe:<><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c-4 5-4 13 0 18M12 3c4 5 4 13 0 18"/></>,
     image:<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 16-5.8-5.8L5 21"/></>,
     activity:<path d="M3 12h4l3-8 4 16 3-8h4"/>,
-    layers:<><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></>
+    layers:<><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></>,
+    copy:<><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></>,
+    volume:<><path d="M11 5 6 9H3v6h3l5 4V5ZM15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12"/></>,
+    retry:<><path d="M3 10a9 9 0 1 1 1.6 7M3 3v7h7"/></>
   };
   return <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]||paths.spark}</svg>;
 }
@@ -2332,8 +2335,77 @@ function DiagramPreview({diagram}){
     </div>
   </div>;
 }
-function Message({message,streaming,onContinue,canContinue=false,onApproveImage,canApproveImage=false}) {
+// Keep clipboard content useful for both ordinary answers and diagram replies.
+function replyCopyText(message){
+  const text=String(message?.content||'').trim();
+  const source=message?.diagram?.code;
+  return [text,typeof source==='string'&&source.trim()
+    ?'Mermaid diagram: '+String(message.diagram.title||'Diagram')+'\n\x60\x60\x60mermaid\n'+source+'\n\x60\x60\x60':''].filter(Boolean).join('\n\n');
+}
+async function copyReplyText(text){
+  if(!text)throw new Error('This reply contains no text to copy.');
+  if(navigator.clipboard?.writeText){
+    try{await navigator.clipboard.writeText(text);return;}catch{}
+  }
+  // Supported in some mobile browsers when Clipboard API is unavailable.
+  const field=document.createElement('textarea');
+  field.value=text;field.setAttribute('readonly','');
+  field.style.cssText='position:fixed;opacity:0;left:-9999px;top:0';
+  document.body.appendChild(field);
+  try{field.focus();field.select();
+    if(!document.execCommand('copy'))throw new Error('Clipboard permission denied.');
+  }finally{field.remove();}
+}
+function readableReplyText(message){
+  let markdown=String(message?.content||'');
+  markdown=markdown.replace(/\x60{3,}[\s\S]*?\x60{3,}/g,' Code block omitted. ');
+  markdown=markdown.replace(/!\[([^\]]*)\]\([^)]*\)/g,' $1 image. ');
+  markdown=markdown.replace(/https?:\/\/\S+/g,' web link ');
+  let spoken=markdown;
+  try{
+    const html=DOMPurify.sanitize(marked.parse(markdown));
+    const doc=new DOMParser().parseFromString(html.replace(/<\/(?:p|li|h[1-6]|tr|blockquote)>/gi,'. '),'text/html');
+    spoken=doc.body?.textContent||markdown;
+  }catch{}
+  if(message?.diagram?.code)spoken+=' Diagram: '+String(message.diagram.title||'Diagram')+'.';
+  if(message?.imageResult)spoken+=' Generated image included.';
+  return spoken.replace(/\s+/g,' ').trim().slice(0,30000);
+}
+function speechChunks(value,maxLen=220){
+  const text=String(value||'').replace(/\s+/g,' ').trim();
+  if(!text)return [];
+  const chunks=[];let rest=text;
+  while(rest.length){
+    if(rest.length<=maxLen){chunks.push(rest);break;}
+    let cut=rest.lastIndexOf('. ',maxLen);
+    if(cut<maxLen/2)cut=rest.lastIndexOf(' ',maxLen);
+    if(cut<maxLen/2)cut=maxLen;
+    else cut++;
+    chunks.push(rest.slice(0,cut).trim());
+    rest=rest.slice(cut).trim();
+  }
+  return chunks;
+}
+function replyRetryPlan(thread,messageId){
+  const index=(thread?.messages||[]).findIndex(m=>m.id===messageId&&m.role==='assistant');
+  if(index<1||thread.messages[index-1]?.role!=='user')
+    throw new Error('Cannot retry this response because its original user request is unavailable.');
+  return {answer:thread.messages[index],user:thread.messages[index-1],
+    originalIndex:index,isLatest:index===thread.messages.length-1,
+    history:thread.messages.slice(0,index)};
+}
+function Message({message,streaming,onContinue,canContinue=false,onApproveImage,canApproveImage=false,onRetry,canRetry=false,onSpeak,isSpeaking=false}) {
   const user=message.role==='user';
+  const [copyFeedback,setCopyFeedback]=useState('');
+  useEffect(()=>{
+    if(!copyFeedback)return;
+    const timer=setTimeout(()=>setCopyFeedback(''),2000);
+    return ()=>clearTimeout(timer);
+  },[copyFeedback]);
+  async function copyReply(){
+    try{await copyReplyText(replyCopyText(message));setCopyFeedback('Copied');}
+    catch(error){setCopyFeedback('Copy failed: '+String(error.message||error).slice(0,80));}
+  }
   const [imageAsset,setImageAsset]=useState({src:null,error:null});
   const imageResult=message.imageResult;
   useEffect(()=>{
@@ -2451,6 +2523,25 @@ function Message({message,streaming,onContinue,canContinue=false,onApproveImage,
         {message.continuationError&&message.status==='incomplete'&&<div className="mt-2 text-xs text-amber-300 break-words">{message.continuationError}</div>}
         {canContinue&&<button type="button" onClick={()=>onContinue(message.id)} className="mt-3 inline-flex gap-2 items-center rounded-lg border border-lime-500/60 bg-lime-500/15 hover:bg-lime-500/25 text-lime-100 px-3 py-2 text-xs font-semibold" title="Spend one free-model inference request to append to this answer"><Icon name="arrow" size={15}/> Continue writing{message.continuations?(' · '+message.continuations+'/'+MAX_MANUAL_CONTINUATIONS):''}</button>}
       </div>
+      {!user&&<div className="flex items-center flex-wrap gap-1.5 mt-1.5 ml-1 text-emerald-300" aria-label="Assistant response actions">
+        <button type="button" onClick={copyReply}
+          disabled={!replyCopyText(message)} aria-label="Copy assistant response" title="Copy response to clipboard"
+          className="inline-flex items-center justify-center min-w-9 h-9 rounded-lg hover:bg-emerald-900/45 hover:text-lime-100 disabled:opacity-40">
+          <Icon name={copyFeedback==='Copied'?'check':'copy'} size={16}/>
+        </button>
+        <button type="button" onClick={()=>onSpeak?.(message)}
+          disabled={!readableReplyText(message)} aria-label={isSpeaking?'Stop reading response':'Read response aloud'}
+          title={isSpeaking?'Stop speaking':'Speak response using browser text-to-speech'}
+          className={'inline-flex items-center justify-center min-w-9 h-9 rounded-lg hover:bg-emerald-900/45 disabled:opacity-40 '+(isSpeaking?'text-lime-300 bg-emerald-900/50':'')}>
+          <Icon name={isSpeaking?'stop':'volume'} size={16}/>
+        </button>
+        <button type="button" onClick={()=>onRetry?.(message.id)} disabled={!canRetry}
+          aria-label="Retry assistant response" title="Regenerate with current free model settings; older replies open a separate conversation"
+          className="inline-flex items-center justify-center min-w-9 h-9 rounded-lg hover:bg-emerald-900/45 hover:text-lime-100 disabled:opacity-40">
+          <Icon name="retry" size={16}/>
+        </button>
+        {copyFeedback&&<span className="text-[11px] text-lime-200 ml-1" role="status">{copyFeedback}</span>}
+      </div>}
     </div>
   </div>;
 }
