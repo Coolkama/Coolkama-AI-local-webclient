@@ -130,6 +130,87 @@
     .quota-progress > span { display:block; height:100%; background:#34d399; transition:width .2s; }
     .quota-progress > span.near { background:#fbbf24; }
     .quota-progress > span.full { background:#fb7185; }
+
+    /* Matrix chat theme: preserve the separate launch splash unchanged. */
+    :root { --matrix-ink:#03120a; --matrix-panel:#071c12; --matrix-line:#32794b;
+      --matrix-green:#9bff55; --matrix-lime:#baff69; --matrix-muted:#a5c5ad; }
+    html, body {background:#010a05}
+    #root { position:relative; z-index:1; background:transparent; }
+    #matrix-backdrop {position:fixed; z-index:0; inset:0; pointer-events:none; overflow:hidden;
+      background:radial-gradient(ellipse at 60% 30%, #0b321c 0%, #04160d 43%, #010703 92%);}
+    #matrix-backdrop::after {content:""; position:absolute; inset:0; z-index:1;
+      background:linear-gradient(90deg,#010803aa 0%,transparent 18%,transparent 82%,#010803b0 100%),
+                 repeating-linear-gradient(0deg, #020e0718 0px,#020e0718 2px,transparent 2px,transparent 6px);}
+    .matrix-column {position:absolute; left:var(--left); top:-95vh; height:220vh; width:1.1rem;
+      color:#72fd66; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+      font-size:clamp(11px,1.45vw,16px); font-weight:600; line-height:1.65; letter-spacing:.36em;
+      writing-mode:vertical-rl; white-space:nowrap; text-shadow:0 0 7px #43f96c55;
+      opacity:var(--alpha,.30); transform:translate3d(0,-20%,0);
+      animation:matrix-stream var(--duration,27s) linear infinite; animation-delay:var(--delay,0s);}
+    @keyframes matrix-stream {from{transform:translate3d(0,-24%,0)}
+      to{transform:translate3d(0,25%,0)}}
+    #root .matrix-ui {background:transparent;color:#e4f6e9;}
+    #root .matrix-sidebar {background:rgba(3,19,11,.92);border-right-color:#275c37;
+      box-shadow: 6px 0 28px #0006;backdrop-filter:blur(15px);}
+    #root .matrix-sidebar .matrix-conversation {border-color:transparent;}
+    #root .matrix-sidebar .matrix-conversation:hover {background:#14382080;}
+    #root .matrix-sidebar .matrix-conversation.active {border-color:#66d87488;
+      background:linear-gradient(110deg,#16452b95,#0b2015af); box-shadow:inset 0 0 20px #4ffa2916;}
+    #root .matrix-main {background:rgba(2,12,7,.20);}
+    #root .matrix-header {background:rgba(3,18,11,.90);border-bottom-color:#2a693e;
+      box-shadow:0 8px 25px #00120570;backdrop-filter:blur(16px);}
+    #root .matrix-chat {background:rgba(2,12,7,.51);}
+    #root .matrix-composer {background:rgba(3,18,10,.94);border-color:#357c49;
+      backdrop-filter:blur(16px);box-shadow:0 -9px 27px #00160a72;}
+    #root .matrix-composer-input {background:rgba(6,30,16,.94);
+      border-color:#448855;box-shadow:inset 0 0 0 1px #58ca6020;}
+    #root .matrix-composer-input:focus-within {border-color:#9bff55;box-shadow:0 0 0 1px #85eb64a0,inset 0 0 22px #3ada2c16;}
+    #root .chat-user-bubble {background:linear-gradient(135deg,#baff69,#81f947);
+      color:#082012;border:1px solid #ddffac;box-shadow:0 3px 23px #59ec3d29;
+      border-radius:20px 20px 6px 20px;}
+    #root .chat-user-bubble .text-slate-100,#root .chat-user-bubble .text-slate-300{color:#071a0a;}
+    #root .chat-assistant-bubble {background:linear-gradient(128deg,rgba(11,37,22,.96),rgba(4,21,13,.96));
+      border:1px solid #3b7950;box-shadow:0 8px 32px #0007,inset 0 1px #adff9512;
+      border-radius:20px 20px 20px 6px;}
+    #root .matrix-avatar {border:1px solid #80eb77;background:#123722;color:#a4ff87;box-shadow:0 0 13px #3eff6c22;}
+    #root .matrix-avatar.user-avatar {background:#baff69;color:#071e0b;border-color:#d8ffa8;}
+    #root .matrix-ui .bg-slate-900 {background-color:rgba(6,27,16,.90);}
+    #root .matrix-ui .bg-slate-950 {background-color:rgba(2,13,8,.94);}
+    #root .matrix-ui .bg-slate-800 {background-color:rgba(18,48,30,.87);}
+    #root .matrix-ui .border-slate-800 {border-color:#315c3f;}
+    #root .matrix-ui .border-slate-700 {border-color:#477456;}
+    #root .matrix-ui .text-slate-400 {color:#afc5b4;}
+    #root .matrix-ui .text-slate-500 {color:#83a38b;}
+    #root .matrix-ui .field {background:#071d11;border-color:#477557;color:#e4f6e9;}
+    #root .matrix-ui .field:focus {border-color:#95ff6d;box-shadow:0 0 0 2px #5bf65c33;}
+    #root .matrix-ui .btn-primary {background:#a2ff58;color:#071b0c;font-weight:800;}
+    #root .matrix-ui .btn-primary:hover {background:#c4ff8d;}
+    #root .matrix-ui .btn-soft {background:#173b25;color:#d3f6d6;}
+    #root .matrix-ui .btn-soft:hover {background:#235335;}
+    #root .matrix-ui .search-toggle {color:#bbddb9;}
+    #root .matrix-ui .search-toggle:hover {background:#1c492b;color:#d5ffb5;}
+    #root .matrix-ui .search-toggle[aria-pressed="true"] {background:#a2ff58;
+      color:#071b0c;border-color:#d6ffad;box-shadow:0 0 12px #8aff5470;}
+    #root .matrix-ui .source-link {background:#092115;border-color:#417851;color:#baff88;}
+    #root .matrix-ui .source-link:hover {background:#143c24;border-color:#a2ff58;}
+    #root .matrix-ui .md {color:#e4f6e9;}
+    #root .matrix-ui .md a {color:#b8ff89;}
+    #root .matrix-ui .md blockquote {border-left-color:#92f873;color:#c0e8c9;}
+    #root .matrix-ui .md :not(pre)>code {background:#143822;color:#c5ffa3;}
+    #root .matrix-ui .md th {background:#173524;}
+    #root .matrix-ui .md th,#root .matrix-ui .md td {border-color:#396b47;}
+    #root .matrix-ui .code-shell {background:#06180e;border-color:#396b47;}
+    #root .matrix-ui .code-bar {border-bottom-color:#396b47;}
+    #root .matrix-ui .code-actions button {color:#bcff8b;}
+    #root .matrix-ui .glass {background:rgba(3,18,10,.94);backdrop-filter:blur(16px);}
+    #root .matrix-ui .quota-card {background:#0a2115;border-color:#386b47;}
+    #root .matrix-ui .quota-progress {background:#173922;}
+    #root .matrix-ui .free-alert {background:linear-gradient(115deg,#05280d,#0c2514);}
+    #root .matrix-hero {background:rgba(4,23,12,.70);border:1px solid #316b44;
+      box-shadow:0 0 50px #204e2120;border-radius:22px;max-width:600px;padding:32px 20px;}
+    @media (max-width:640px){.matrix-column{font-size:12px;opacity:calc(var(--alpha,.30) * .75)}
+      #root .matrix-chat {background:rgba(2,12,7,.62);} }
+    @media (prefers-reduced-motion:reduce) {.matrix-column{animation:none;transform:none;}}
   </style>
 </head>
 <body class="splash-active">
@@ -243,10 +324,11 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github-dark.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/common.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<div id="matrix-backdrop" aria-hidden="true"><span class="matrix-column" style="--left:1.59%;--duration:19s;--delay:0s;--alpha:0.13">0101011011101001100101010011011101001010001</span><span class="matrix-column" style="--left:6.14%;--duration:30s;--delay:-7s;--alpha:0.22">1011001010100110010111011100110101011001011</span><span class="matrix-column" style="--left:10.68%;--duration:27s;--delay:-14s;--alpha:0.30">10010101101110001010101110100010110001101</span><span class="matrix-column" style="--left:15.23%;--duration:24s;--delay:-1s;--alpha:0.19">0110101101011010110010111010110100101</span><span class="matrix-column" style="--left:19.77%;--duration:21s;--delay:-8s;--alpha:0.28">0101011011101001100101010011011101001010001</span><span class="matrix-column" style="--left:24.32%;--duration:32s;--delay:-15s;--alpha:0.16">1011001010100110010111011100110101011001011</span><span class="matrix-column" style="--left:28.86%;--duration:29s;--delay:-2s;--alpha:0.25">10010101101110001010101110100010110001101</span><span class="matrix-column" style="--left:33.41%;--duration:26s;--delay:-9s;--alpha:0.13">0110101101011010110010111010110100101</span><span class="matrix-column" style="--left:37.95%;--duration:23s;--delay:-16s;--alpha:0.22">0101011011101001100101010011011101001010001</span><span class="matrix-column" style="--left:42.50%;--duration:20s;--delay:-3s;--alpha:0.30">1011001010100110010111011100110101011001011</span><span class="matrix-column" style="--left:47.05%;--duration:31s;--delay:-10s;--alpha:0.19">10010101101110001010101110100010110001101</span><span class="matrix-column" style="--left:51.59%;--duration:28s;--delay:-17s;--alpha:0.28">0110101101011010110010111010110100101</span><span class="matrix-column" style="--left:56.14%;--duration:25s;--delay:-4s;--alpha:0.16">0101011011101001100101010011011101001010001</span><span class="matrix-column" style="--left:60.68%;--duration:22s;--delay:-11s;--alpha:0.25">1011001010100110010111011100110101011001011</span><span class="matrix-column" style="--left:65.23%;--duration:19s;--delay:-18s;--alpha:0.13">10010101101110001010101110100010110001101</span><span class="matrix-column" style="--left:69.77%;--duration:30s;--delay:-5s;--alpha:0.22">0110101101011010110010111010110100101</span><span class="matrix-column" style="--left:74.32%;--duration:27s;--delay:-12s;--alpha:0.30">0101011011101001100101010011011101001010001</span><span class="matrix-column" style="--left:78.86%;--duration:24s;--delay:-19s;--alpha:0.19">1011001010100110010111011100110101011001011</span><span class="matrix-column" style="--left:83.41%;--duration:21s;--delay:-6s;--alpha:0.28">10010101101110001010101110100010110001101</span><span class="matrix-column" style="--left:87.95%;--duration:32s;--delay:-13s;--alpha:0.16">0110101101011010110010111010110100101</span><span class="matrix-column" style="--left:92.50%;--duration:29s;--delay:0s;--alpha:0.25">0101011011101001100101010011011101001010001</span><span class="matrix-column" style="--left:97.05%;--duration:26s;--delay:-7s;--alpha:0.13">1011001010100110010111011100110101011001011</span></div>
 <div id="root"></div>
 <script type="text/babel">
 const {useState, useEffect, useLayoutEffect, useRef, useMemo} = React;
-const APP_BUILD = '2026-11-04-splash-v7';
+const APP_BUILD = '2026-11-04-matrix-chat-v8';
 const STORAGE_KEY = 'llm-workbench-v1';
 const USAGE_KEY = 'llm-workbench-free-only-usage-v1';
 // These are deliberately conservative CLIENT-ONLY stops, NOT the providers' real quotas.
@@ -1747,13 +1829,13 @@ function Message({message,streaming,onContinue,canContinue=false}) {
   const hasWebActivity=!user&&(searchLog.length>0||openLog.length>0||sources.length>0||!!message.searchingWeb);
   const searching=!!message.searchingWeb&&streaming;
   return <div className={`flex gap-3 md:gap-4 ${user?'flex-row-reverse':''}`}>
-    <div className={`shrink-0 w-8 h-8 rounded-xl grid place-items-center text-xs font-bold ${user?'bg-slate-700 text-white':'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'}`}>
+    <div className={`matrix-avatar ${user?'user-avatar':''} shrink-0 w-8 h-8 rounded-xl grid place-items-center text-xs font-bold`}>
       {user?'You':<Icon name="spark" size={16}/>}</div>
     <div className={`min-w-0 max-w-[calc(100%-48px)] md:max-w-[85%] ${user?'text-right':''}`}>
-      <div className={`text-[11px] font-medium mb-1.5 ${user?'text-slate-400':'text-indigo-300'}`}>{user?'You':'Assistant'}{streaming&&<span className="ml-2 text-slate-500">● Streaming</span>}{message.webSearch&&<span className="ml-2 text-indigo-300 inline-flex gap-1 items-center"><Icon name="globe" size={12}/> Web</span>}</div>
-      <div className={`text-left rounded-2xl px-3.5 py-3 md:px-4 ${user?'bg-indigo-600/15 border border-indigo-500/25':'bg-slate-900 border border-slate-800'}`}>
+      <div className={`text-[11px] font-medium mb-1.5 ${user?'text-slate-400':'text-lime-300'}`}>{user?'You':'Assistant'}{streaming&&<span className="ml-2 text-slate-500">● Streaming</span>}{message.webSearch&&<span className="ml-2 text-lime-300 inline-flex gap-1 items-center"><Icon name="globe" size={12}/> Web</span>}</div>
+      <div className={`text-left rounded-2xl px-3.5 py-3 md:px-4 ${user?'chat-user-bubble':'chat-assistant-bubble'}`}>
         {hasWebActivity&&<details className="mb-3 rounded-xl border border-slate-700/80 bg-slate-950/55 text-left">
-          <summary className="cursor-pointer select-none px-3 py-2.5 text-xs text-indigo-200 font-semibold">
+          <summary className="cursor-pointer select-none px-3 py-2.5 text-xs text-lime-200 font-semibold">
             <span className="inline-flex items-center gap-2">
               <Icon name="globe" size={15} className={searching?'stream-dot':''}/>
               {searching?'Searching web...':'Searched web'}
@@ -1761,7 +1843,7 @@ function Message({message,streaming,onContinue,canContinue=false}) {
             </span>
           </summary>
           <div className="border-t border-slate-800 px-3 pb-3 pt-2 space-y-3">
-            {searching&&message.searchStatus&&<p className="text-xs text-indigo-300 break-words">{message.searchStatus}</p>}
+            {searching&&message.searchStatus&&<p className="text-xs text-lime-300 break-words">{message.searchStatus}</p>}
             {searchLog.length>0&&<div><p className="text-[11px] font-semibold text-slate-400 mb-1">Search queries</p>
               <ol className="list-decimal ml-4 space-y-1 text-xs text-slate-300">{searchLog.map((q,i)=><li key={i} className="break-words">{q}</li>)}</ol>
             </div>}
@@ -1774,12 +1856,12 @@ function Message({message,streaming,onContinue,canContinue=false}) {
           </div>
         </details>}
         {!user&&message.citationAudit&&(message.citationAudit.unverifiedUrls?.length>0||message.citationAudit.invalidRefs?.length>0||message.citationAudit.noTraceableCitations)&&<div className="mb-3 rounded-lg border border-amber-700/60 bg-amber-950/20 p-3 text-xs text-amber-100 space-y-1"><strong>Citation check</strong>{message.citationAudit.unverifiedUrls?.length>0&&<p>{message.citationAudit.unverifiedUrls.length} URL(s) in the answer were not returned by the web tools. These links are unverified, not retrieved evidence.</p>}{message.citationAudit.invalidRefs?.length>0&&<p>Unknown source references: {message.citationAudit.invalidRefs.map(n=>'['+n+']').join(', ')}.</p>}{message.citationAudit.noTraceableCitations&&<p>The answer includes no traceable source citations. The retrieved sources below do not independently verify its claims.</p>}{message.citationAudit.unverifiedUrls?.length>0&&<details><summary className="cursor-pointer">Unverified URLs</summary><ul className="list-disc ml-4 mt-2 space-y-1">{message.citationAudit.unverifiedUrls.map(url=><li key={url} className="break-all">{url}</li>)}</ul></details>}</div>}
-        {!user&&streaming&&message.reasoningProgress&&!message.content&&<div className="mb-3 text-xs text-indigo-200 flex flex-wrap items-center gap-2" role="status" aria-live="polite">
-          <span className="w-2 h-2 bg-indigo-400 rounded-full stream-dot"/>
+        {!user&&streaming&&message.reasoningProgress&&!message.content&&<div className="mb-3 text-xs text-lime-200 flex flex-wrap items-center gap-2" role="status" aria-live="polite">
+          <span className="w-2 h-2 bg-lime-400 rounded-full stream-dot"/>
           <span>Model reasoning · {message.reasoningProgress.model||'selected free model'}</span>
           <span className="text-slate-400">{Number(message.reasoningProgress.chars||0).toLocaleString('en-GB')} reasoning characters received · awaiting answer</span>
         </div>}
-        {message.content ? (user?<div className="whitespace-pre-wrap break-words text-[14px] leading-7 text-slate-100">{message.content}</div>:<Markdown text={message.content}/>) : (streaming&&!message.reasoningProgress?<div className="flex gap-1 py-2">{[0,1,2].map(i=><span key={i} className="w-1.5 h-1.5 bg-indigo-400 rounded-full stream-dot" style={{animationDelay:`${i*0.18}s`}}/>)}</div>:null)}
+        {message.content ? (user?<div className="whitespace-pre-wrap break-words text-[14px] leading-7 text-slate-100">{message.content}</div>:<Markdown text={message.content}/>) : (streaming&&!message.reasoningProgress?<div className="flex gap-1 py-2">{[0,1,2].map(i=><span key={i} className="w-1.5 h-1.5 bg-lime-400 rounded-full stream-dot" style={{animationDelay:`${i*0.18}s`}}/>)}</div>:null)}
         {(message.attachments||[]).length>0&&<div className="flex flex-wrap gap-2 mt-2">{message.attachments.map(a=>a.type==='image'?<div key={a.id} className="relative"><img src={a.dataUrl} alt={a.name} title={a.name} className="w-24 h-24 md:w-32 md:h-32 object-cover rounded-xl border border-slate-600"/></div>:<div key={a.id} title={a.name} className="max-w-full flex items-center gap-1.5 text-xs text-slate-300 bg-slate-800 border border-slate-700 px-2.5 py-2 rounded-lg"><Icon name="file" size={15}/><span className="truncate max-w-44">{a.name}</span>{a.truncated&&<span className="text-amber-400">(partial)</span>}</div>)}</div>}
         {message.status==='error'&&<div className="mt-2 text-xs text-rose-400 break-words">{message.error||'Request failed'}</div>}
         {message.status==='stopped'&&<div className="mt-2 text-xs text-amber-400">Generation stopped</div>}
@@ -1793,7 +1875,7 @@ function Message({message,streaming,onContinue,canContinue=false}) {
             {message.contextWindow.exceedsBudget?' · estimated window exceeded':''}
           </p>}
         {message.continuationError&&message.status==='incomplete'&&<div className="mt-2 text-xs text-amber-300 break-words">{message.continuationError}</div>}
-        {canContinue&&<button type="button" onClick={()=>onContinue(message.id)} className="mt-3 inline-flex gap-2 items-center rounded-lg border border-indigo-500/60 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-100 px-3 py-2 text-xs font-semibold" title="Spend one free-model inference request to append to this answer"><Icon name="arrow" size={15}/> Continue writing{message.continuations?(' · '+message.continuations+'/'+MAX_MANUAL_CONTINUATIONS):''}</button>}
+        {canContinue&&<button type="button" onClick={()=>onContinue(message.id)} className="mt-3 inline-flex gap-2 items-center rounded-lg border border-lime-500/60 bg-lime-500/15 hover:bg-lime-500/25 text-lime-100 px-3 py-2 text-xs font-semibold" title="Spend one free-model inference request to append to this answer"><Icon name="arrow" size={15}/> Continue writing{message.continuations?(' · '+message.continuations+'/'+MAX_MANUAL_CONTINUATIONS):''}</button>}
       </div>
     </div>
   </div>;
@@ -1861,7 +1943,7 @@ function DiagnosticsPanel({chatId,onClose}){
         <div className="space-y-2">
           {!shown.length?<div className="rounded-xl border border-slate-800 p-5 text-center text-xs text-slate-400">No diagnostic events for this view yet. Send a message to capture a trace.</div>:shown.slice().reverse().slice(0,100).map(event=><details key={event.id} className="border border-slate-800 rounded-xl bg-slate-900/60 px-3 py-2 text-xs">
             <summary className="cursor-pointer flex flex-wrap gap-2 items-center justify-between">
-              <span className="text-indigo-300 font-semibold break-all">{event.type}</span>
+              <span className="text-lime-300 font-semibold break-all">{event.type}</span>
               <span className="text-slate-500 tabular-nums">{new Date(event.at).toLocaleTimeString()} {event.round?'· round '+event.round:''}</span>
             </summary>
             <pre className="overflow-x-auto whitespace-pre-wrap break-all text-slate-300 mt-2 text-[11px] leading-5">{JSON.stringify(event.data,null,2)}</pre>
@@ -2039,20 +2121,20 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
           <strong className="block text-sm mb-1">NO PAID REQUESTS — IMPORTANT</strong>
           The app blocks paid model IDs, billable hosted search and automatic paid fallback. It stops at conservative local usage caps. <strong>However, it cannot inspect your provider billing plan, other devices or account-wide usage, so the browser alone CANNOT guarantee zero charges.</strong> Use ONLY free accounts/projects with no billing enabled and no automatic top-ups. Do not upgrade or attach a payment method.
         </div>
-        <div><label className="block text-xs font-semibold text-slate-300 mb-2">Provider</label><div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{Object.entries(PROVIDERS).map(([id,p])=><button key={id} onClick={()=>{patch({provider:id});setModelError('');}} className={`text-left px-3 py-2.5 rounded-xl border text-sm ${provider===id?'bg-indigo-600/20 border-indigo-500 text-indigo-100':'bg-slate-900 border-slate-700 text-slate-300'}`}>{p.name}</button>)}</div></div>
-        <div className="rounded-xl p-3 bg-slate-900 border border-slate-800 text-xs leading-5 text-slate-400">{info.help} {info.keyUrl&&<a className="inline-flex items-center gap-1 text-indigo-300 underline" href={info.keyUrl} rel="noopener noreferrer" target="_blank">{provider==='ollama'?'Get Ollama':'Get an API key'} <Icon name="arrow" size={12}/></a>}</div>
+        <div><label className="block text-xs font-semibold text-slate-300 mb-2">Provider</label><div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{Object.entries(PROVIDERS).map(([id,p])=><button key={id} onClick={()=>{patch({provider:id});setModelError('');}} className={`text-left px-3 py-2.5 rounded-xl border text-sm ${provider===id?'bg-lime-600/20 border-lime-500 text-lime-100':'bg-slate-900 border-slate-700 text-slate-300'}`}>{p.name}</button>)}</div></div>
+        <div className="rounded-xl p-3 bg-slate-900 border border-slate-800 text-xs leading-5 text-slate-400">{info.help} {info.keyUrl&&<a className="inline-flex items-center gap-1 text-lime-300 underline" href={info.keyUrl} rel="noopener noreferrer" target="_blank">{provider==='ollama'?'Get Ollama':'Get an API key'} <Icon name="arrow" size={12}/></a>}</div>
         {provider!=='demo'&&<>
           {provider!=='ollama'&&<div><label className="block text-xs font-semibold text-slate-300 mb-2">API key (FREE-tier account only)</label><div className="relative"><input className="field pr-12" type={showKey?'text':'password'} placeholder="Paste your FREE-tier API key" autoComplete="off" value={profile.key} onChange={e=>onChange(s=>({...s,profiles:{...s.profiles,[s.provider]:{...s.profiles[s.provider],key:e.target.value}},freeTierConfirmed:{...s.freeTierConfirmed,[s.provider]:false}}))}/><button className="absolute right-3 top-2.5 text-slate-400" onClick={()=>setShowKey(!showKey)} aria-label="Show or hide API key"><Icon name={showKey?'eyeoff':'eye'}/></button></div></div>}
           <div><label className="block text-xs font-semibold text-slate-300 mb-2">Base URL {provider==='ollama'?'(private LAN or localhost only)':'(official, locked)'}</label><input className="field font-mono text-xs" spellCheck="false" value={profile.url} readOnly={provider!=='ollama'} onChange={e=>provider==='ollama'&&patchProfile({url:e.target.value})}/></div>
           {provider!=='ollama'&&<label className="flex gap-2 items-start rounded-xl border border-amber-700/60 bg-amber-950/20 p-3 text-xs leading-5 text-amber-100"><input className="mt-1 h-4 w-4 accent-emerald-500 shrink-0" type="checkbox" checked={confirmed} onChange={e=>updateConfirmation(e.target.checked)}/><span><strong>Required before API requests:</strong> I have checked that this API key uses the provider's genuine FREE tier, with NO billing-enabled project, Developer/pay-as-you-go plan or auto-recharge. I understand the app cannot independently verify account billing.</span></label>}
         </>}
-        <div><div className="flex justify-between items-center mb-2"><label className="text-xs font-semibold text-slate-300">Free models only</label>{provider!=='demo'&&<button className="text-xs text-indigo-300 disabled:opacity-50" disabled={loadingModels} onClick={loadModels}>{loadingModels?'Loading…':'Discover FREE models'}</button>}</div>
+        <div><div className="flex justify-between items-center mb-2"><label className="text-xs font-semibold text-slate-300">Free models only</label>{provider!=='demo'&&<button className="text-xs text-lime-300 disabled:opacity-50" disabled={loadingModels} onClick={loadModels}>{loadingModels?'Loading…':'Discover FREE models'}</button>}</div>
           <select className="field mb-2" value={selectedModel} onChange={e=>patchProfile({model:e.target.value})}>
             {listedModels.map(([id,label])=><option key={id} value={id}>{label}</option>)}
           </select>
           {discoveredModels.length>0&&<div className="flex flex-wrap items-center gap-3 mb-2 text-[11px] text-slate-400">
             <span>Showing {discoveredModels.length} models discovered from {info.name}; built-in suggestions are hidden.</span>
-            <button type="button" className="text-indigo-300 underline" onClick={()=>onChange(current=>({...current,
+            <button type="button" className="text-lime-300 underline" onClick={()=>onChange(current=>({...current,
               discoveredModels:{...(current.discoveredModels||{}),[provider]:[]},
               profiles:{...current.profiles,[provider]:{...current.profiles[provider],model:info.model}}
             }))}>Show suggested models</button>
@@ -2061,15 +2143,15 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
           <p className="text-[11px] text-emerald-300 leading-5">Custom paid model IDs are disabled. OpenRouter discovery requires zero pricing and a <code>:free</code> variant; with Web enabled it also requires advertised tool support. Groq/Gemini discovery uses free-tier allowlists; Ollama models run locally.</p>
           {modelError&&<p className="text-xs text-amber-300 mt-1">{modelError}</p>}
         </div>
-        <div className="quota-card space-y-2"><div className="flex flex-wrap justify-between items-center gap-2"><strong className="text-xs text-emerald-300">Free plan limits &amp; local safety counters</strong><a className="text-xs underline text-indigo-300" href={FREE_LINKS[provider]||FREE_LINKS.openrouter} target="_blank" rel="noopener noreferrer">{FREE_LINKS[provider]?'Official limits ↗':'View free limits ↗'}</a></div>
+        <div className="quota-card space-y-2"><div className="flex flex-wrap justify-between items-center gap-2"><strong className="text-xs text-emerald-300">Free plan limits &amp; local safety counters</strong><a className="text-xs underline text-lime-300" href={FREE_LINKS[provider]||FREE_LINKS.openrouter} target="_blank" rel="noopener noreferrer">{FREE_LINKS[provider]?'Official limits ↗':'View free limits ↗'}</a></div>
           <p className="text-xs text-slate-300 leading-5">{FREE_DETAILS[provider]}</p>
           {LOCAL_CAPS[provider]&&<Quota provider={provider}/>}
           <p className="text-[11px] text-slate-500">Counters are based ONLY on requests from this browser. Failed requests still count. They do not reflect other apps/devices, actual provider token usage, or remaining account quota. Changing browser data can reset them.</p>
         </div>
         <div className="border-t border-slate-800 pt-4 space-y-3">
-          <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 font-semibold text-sm"><Icon name="globe" size={17} className="text-indigo-300"/> Web search · FREE only</div><label className="flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" className="accent-indigo-500 h-4 w-4" checked={!!value.search.enabled} onChange={e=>patchSearch({enabled:e.target.checked})}/> Default on</label></div>
+          <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 font-semibold text-sm"><Icon name="globe" size={17} className="text-lime-300"/> Web search · FREE only</div><label className="flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" className="accent-lime-500 h-4 w-4" checked={!!value.search.enabled} onChange={e=>patchSearch({enabled:e.target.checked})}/> Default on</label></div>
           <p className="text-xs leading-5 text-amber-200">OpenRouter hosted search was REMOVED because even a free AI model can trigger separately billable searches. Only Tavily FREE Researcher basic search is allowed. No paid-search fallback.</p>
-          <div><label className="block text-xs font-semibold text-slate-300 mb-2">Tavily FREE Researcher API key</label><div className="relative"><input className="field pr-12" type={showSearchKey?'text':'password'} autoComplete="off" placeholder="tvly-... (free plan only)" value={value.search.tavilyKey} onChange={e=>patchSearch({tavilyKey:e.target.value,tavilyFreeConfirmed:false})}/><button className="absolute right-3 top-2.5 text-slate-400" aria-label="Show or hide Tavily key" onClick={()=>setShowSearchKey(v=>!v)}><Icon name={showSearchKey?'eyeoff':'eye'}/></button></div><p className="text-xs text-slate-400 mt-2">Free plan = <strong>1,000 credits per calendar month</strong>, then search stops; no payment card required. <a className="text-indigo-300 underline" target="_blank" rel="noopener noreferrer" href="https://app.tavily.com/">Create free key</a> · <a className="text-indigo-300 underline" target="_blank" rel="noopener noreferrer" href="https://www.tavily.com/pricing">Official quotas</a>.</p></div>
+          <div><label className="block text-xs font-semibold text-slate-300 mb-2">Tavily FREE Researcher API key</label><div className="relative"><input className="field pr-12" type={showSearchKey?'text':'password'} autoComplete="off" placeholder="tvly-... (free plan only)" value={value.search.tavilyKey} onChange={e=>patchSearch({tavilyKey:e.target.value,tavilyFreeConfirmed:false})}/><button className="absolute right-3 top-2.5 text-slate-400" aria-label="Show or hide Tavily key" onClick={()=>setShowSearchKey(v=>!v)}><Icon name={showSearchKey?'eyeoff':'eye'}/></button></div><p className="text-xs text-slate-400 mt-2">Free plan = <strong>1,000 credits per calendar month</strong>, then search stops; no payment card required. <a className="text-lime-300 underline" target="_blank" rel="noopener noreferrer" href="https://app.tavily.com/">Create free key</a> · <a className="text-lime-300 underline" target="_blank" rel="noopener noreferrer" href="https://www.tavily.com/pricing">Official quotas</a>.</p></div>
           <label className="flex gap-2 items-start rounded-xl border border-amber-700/60 bg-amber-950/20 p-3 text-xs leading-5 text-amber-100"><input type="checkbox" className="h-4 w-4 mt-1 accent-emerald-500 shrink-0" checked={!!value.search.tavilyFreeConfirmed} onChange={e=>patchSearch({tavilyFreeConfirmed:e.target.checked})}/><span><strong>Required for search:</strong> My Tavily key is on the free, no-credit-card Researcher plan. NOT a paid, subscription or pay-as-you-go account.</span></label>
           <div><label className="block text-xs font-semibold text-slate-300 mb-2">Sources returned per tool call</label><select className="field" value={value.search.maxResults} onChange={e=>patchSearch({maxResults:Number(e.target.value)})}>{[2,3,4,5,8,10].map(n=><option key={n} value={n}>{n} sources</option>)}</select></div>
           <div><label className="block text-xs font-semibold text-slate-300 mb-2">Maximum web searches per message (1 Basic credit each)</label><select className="field" value={searchBudget(value)} onChange={e=>patchSearch({maxToolSearches:Number(e.target.value)})}>{[1,2,3].map(n=><option key={n} value={n}>{n} search{n>1?'es':''} maximum</option>)}</select><p className="text-[11px] text-slate-400 mt-1">The model may also open up to 3 retrieved pages with Basic Extract, each conservatively counted as one local Tavily credit. Every model continuation uses another free LLM request. No paid fallback.</p></div>
@@ -2081,7 +2163,7 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
             {CONTEXT_WINDOW_CHOICES.map(n=><option key={n} value={n}>{n.toLocaleString('en-GB')} estimated tokens</option>)}
           </select>
           <p className="text-[11px] text-slate-400 mt-1">Keeps the latest two conversation turns, shortens oversized excerpts and drops older turns only from the API request. The full chat stays in this browser. No LLM summarisation calls. {provider==='groq'?'Groq defaults to 8,192 estimated input tokens to retain more code across continuations; larger requests can trigger rate-limit waits.':'Estimates vary by model and provider.'}</p>
-          {provider==='groq'&&<label className="flex items-start gap-2 text-xs text-slate-300 mt-3"><input type="checkbox" className="accent-indigo-500 mt-0.5" checked={profile.groqPrefill!==false} onChange={e=>patchProfile({groqPrefill:e.target.checked})}/><span><strong>GPT-OSS assistant prefilling (experimental)</strong><span className="block text-slate-400 mt-1">Keeps the original request and tool schema byte-for-byte consistent for caching. Some Groq models still restart long code. Automatic completion may retry with a normal follow-up, counting every request against the six-attempt and free-use limits. Manual Continue makes only one request per press; press it again after a misalignment to use the follow-up strategy. Disable this option to always use follow-up continuation.</span></span></label>}
+          {provider==='groq'&&<label className="flex items-start gap-2 text-xs text-slate-300 mt-3"><input type="checkbox" className="accent-lime-500 mt-0.5" checked={profile.groqPrefill!==false} onChange={e=>patchProfile({groqPrefill:e.target.checked})}/><span><strong>GPT-OSS assistant prefilling (experimental)</strong><span className="block text-slate-400 mt-1">Keeps the original request and tool schema byte-for-byte consistent for caching. Some Groq models still restart long code. Automatic completion may retry with a normal follow-up, counting every request against the six-attempt and free-use limits. Manual Continue makes only one request per press; press it again after a misalignment to use the follow-up strategy. Disable this option to always use follow-up continuation.</span></span></label>}
         </div>
         <div>
           <label className="block text-xs font-semibold text-slate-300 mb-2">Output length (per model request)</label>
@@ -2101,13 +2183,13 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
             'Automatic omits max_tokens so the provider decides the per-request response length. Manual values are optional. Provider limits and free-tier quotas still apply.'}</p>
         </div>
         <label className="flex gap-3 items-start rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-xs leading-5 text-slate-300">
-          <input type="checkbox" className="mt-1 h-4 w-4 accent-indigo-500 shrink-0"
+          <input type="checkbox" className="mt-1 h-4 w-4 accent-lime-500 shrink-0"
             checked={value.autoContinue!==false} onChange={e=>patch({autoContinue:e.target.checked})}/>
           <span><strong className="text-white">Seamless long answers</strong>
             <span className="block text-slate-400 mt-1">Automatically finish responses interrupted by output limits, in the same message. Up to six additional free-tier model requests per answer; each counts towards provider limits. Groq rate-limit pauses are handled separately, with bounded waits and no paid fallback.</span>
           </span>
         </label>
-        <div><div className="flex justify-between mb-2"><label className="text-xs font-semibold text-slate-300">Temperature</label><span className="text-xs text-indigo-300 font-mono">{Number(value.temperature).toFixed(2)}</span></div><input type="range" min="0" max="2" step="0.05" className="w-full accent-indigo-500" value={value.temperature} onChange={e=>patch({temperature:Number(e.target.value)})}/></div>
+        <div><div className="flex justify-between mb-2"><label className="text-xs font-semibold text-slate-300">Temperature</label><span className="text-xs text-lime-300 font-mono">{Number(value.temperature).toFixed(2)}</span></div><input type="range" min="0" max="2" step="0.05" className="w-full accent-lime-500" value={value.temperature} onChange={e=>patch({temperature:Number(e.target.value)})}/></div>
         <div><label className="block text-xs font-semibold text-slate-300 mb-2">System instruction</label><textarea className="field min-h-24" value={value.systemPrompt} onChange={e=>patch({systemPrompt:e.target.value})}/></div>
         <div className="rounded-xl border border-slate-700 p-3 flex gap-3 justify-between items-center"><div><strong className="text-sm">Diagnostics</strong><p className="text-xs text-slate-400 mt-1">Local event trace, model metadata, tool history and JSON exports</p></div><button className="btn btn-soft shrink-0" onClick={onOpenDiagnostics}>Open logs</button></div>
         <p className="text-xs leading-5 text-amber-200/80 border-t border-slate-800 pt-4"><strong>Privacy:</strong> API keys, images and messages live in localStorage, which is not encrypted. Browser extensions and scripts running on this page can access them. Use a trusted device and restricted keys; do not enter secrets or confidential documents into public free models. Browsers can block cross-origin requests or HTTP endpoints on HTTPS pages.</p>
@@ -2731,23 +2813,23 @@ function App() {
     } finally {workRef.current=null;setBusy(null);}
   }
   const sorted=useMemo(()=>[...chats].sort((a,b)=>(b.updatedAt||b.createdAt)-(a.updatedAt||a.createdAt)),[chats]);
-  return <div className="app-height flex overflow-hidden text-slate-100">
+  return <div className="app-height matrix-ui flex overflow-hidden text-slate-100">
     {drawer&&<div className="fixed inset-0 z-20 bg-black/65 md:hidden" onClick={()=>setDrawer(false)}/>}
-    <aside className={`fixed md:relative inset-y-0 left-0 z-30 w-[min(84vw,310px)] md:w-[280px] shrink-0 flex flex-col border-r border-slate-800 bg-slate-900 safe-top safe-bottom transform transition-transform duration-200 ${drawer?'translate-x-0':'-translate-x-full md:translate-x-0'}`}>
+    <aside className={`fixed md:relative inset-y-0 left-0 z-30 w-[min(84vw,310px)] md:w-[280px] shrink-0 flex flex-col border-r border-slate-800 bg-slate-900 matrix-sidebar safe-top safe-bottom transform transition-transform duration-200 ${drawer?'translate-x-0':'-translate-x-full md:translate-x-0'}`}>
       <div className="px-4 pt-5 pb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2.5"><div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-700 grid place-items-center shadow-lg shadow-indigo-800/30"><Icon name="spark"/></div><div><div className="font-bold text-sm">Tight Arse AI</div><div className="text-[10px] uppercase tracking-[.18em] text-slate-500">Chat client</div></div></div>
+        <div className="flex items-center gap-2.5"><div className="w-9 h-9 rounded-xl bg-gradient-to-br from-lime-500 to-emerald-700 grid place-items-center shadow-lg shadow-lime-800/30"><Icon name="spark"/></div><div><div className="font-bold text-sm">Tight Arse AI</div><div className="text-[10px] uppercase tracking-[.18em] text-slate-500">Chat client</div></div></div>
         <button className="md:hidden text-slate-400 p-2" onClick={()=>setDrawer(false)} aria-label="Close drawer"><Icon name="x"/></button>
       </div>
       <button onClick={addChat} className="btn btn-primary mx-4 mb-5"><Icon name="plus" size={16}/> New conversation</button>
       <div className="px-5 text-[10px] uppercase tracking-[.2em] font-semibold text-slate-500 mb-2">Conversations · {chats.length}</div>
-      <div className="flex-1 overflow-y-auto thin-scroll px-2 space-y-1">{sorted.map(c=><div key={c.id} className={`group flex items-center rounded-xl border ${c.id===active?.id?'bg-indigo-500/10 border-indigo-500/30':'border-transparent hover:bg-slate-800/70'}`}>
-        <button onClick={()=>changeChat(c.id)} className="text-left flex-1 min-w-0 px-3 py-3 flex items-center gap-2.5"><Icon name="message" size={16} className={c.id===active?.id?'text-indigo-400':'text-slate-500'}/><span className="truncate text-sm">{c.title}</span>{busy===c.id&&<span className="shrink-0 w-1.5 h-1.5 bg-indigo-400 rounded-full stream-dot"/>}</button>
+      <div className="flex-1 overflow-y-auto thin-scroll px-2 space-y-1">{sorted.map(c=><div key={c.id} className={`group matrix-conversation ${c.id===active?.id?'active':''} flex items-center rounded-xl border ${c.id===active?.id?'bg-lime-500/10 border-lime-500/30':'border-transparent hover:bg-slate-800/70'}`}>
+        <button onClick={()=>changeChat(c.id)} className="text-left flex-1 min-w-0 px-3 py-3 flex items-center gap-2.5"><Icon name="message" size={16} className={c.id===active?.id?'text-lime-400':'text-slate-500'}/><span className="truncate text-sm">{c.title}</span>{busy===c.id&&<span className="shrink-0 w-1.5 h-1.5 bg-lime-400 rounded-full stream-dot"/>}</button>
         <button onClick={()=>deleteChat(c.id)} className="p-2 mr-1 text-slate-500 hover:text-rose-400" title="Delete conversation" aria-label={`Delete ${c.title}`}><Icon name="trash" size={15}/></button>
       </div>)}</div>
       <div className="m-3 p-3 rounded-xl bg-slate-950/60 border border-slate-800"><div className="flex items-center gap-2 text-xs text-slate-300"><span className="w-2 h-2 bg-emerald-400 rounded-full"/> Local browser storage</div><p className="text-[11px] text-slate-500 mt-1">No account or backend required.</p><p className="mt-1 text-[10px] text-slate-500 font-mono" title="App version — check this to verify your published index.html is current">Build: {APP_BUILD}</p></div>
     </aside>
-    <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-slate-950">
-      <header className="safe-top shrink-0 border-b border-slate-800/80 bg-slate-950/90 backdrop-blur">
+    <main className="matrix-main flex-1 min-w-0 min-h-0 flex flex-col bg-slate-950">
+      <header className="matrix-header safe-top shrink-0 border-b border-slate-800/80 bg-slate-950/90 backdrop-blur">
         <div className="h-16 px-3 sm:px-5 flex items-center gap-2 sm:gap-4">
           <button className="md:hidden p-2 text-slate-300" onClick={()=>setDrawer(true)} aria-label="Open conversations"><Icon name="menu" size={22}/></button>
           <div className="flex-1 min-w-0"><h1 className="text-sm sm:text-base font-semibold truncate">{active?.title||'New conversation'}</h1><p className="text-[11px] text-emerald-300 truncate">FREE ONLY · {profile.model||'Choose a model'}</p></div>
@@ -2761,14 +2843,14 @@ function App() {
         <button className="text-amber-200 underline shrink-0" onClick={()=>setSettingsOpen(true)}>Usage limits / billing warning</button>
       </div>
       <div className="relative flex-1 min-h-0">
-      <section ref={chatScrollRef} onScroll={onChatScroll} className="chat-scroll h-full overflow-y-auto thin-scroll" aria-label="Chat messages">
+      <section ref={chatScrollRef} onScroll={onChatScroll} className="chat-scroll matrix-chat h-full overflow-y-auto thin-scroll" aria-label="Chat messages">
         <div className="max-w-4xl mx-auto px-4 sm:px-8 py-6 md:py-8">
-          {!active?.messages.length ? <div className="flex flex-col items-center justify-center text-center min-h-[48dvh]">
-            <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-indigo-500/30 to-violet-600/10 border border-indigo-500/30 grid place-items-center text-indigo-300 mb-5"><Icon name="spark" size={30}/></div>
+          {!active?.messages.length ? <div className="matrix-hero flex flex-col items-center justify-center text-center min-h-[48dvh]">
+            <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-lime-500/30 to-emerald-600/10 border border-lime-500/30 grid place-items-center text-lime-300 mb-5"><Icon name="spark" size={30}/></div>
             <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">What shall we work on?</h2>
             <p className="text-slate-400 text-sm max-w-sm mt-3 leading-6">Chat with free and local AI models. Search the web, attach images, PDFs or code, and save generated snippets.</p>
             <div className="flex gap-2 flex-wrap justify-center mt-6">{['Write a Python script','Explain a PDF','Create a React component'].map(s=><button key={s} className="btn btn-soft border border-slate-700/70 !text-xs" onClick={()=>{setDraft(s);inputRef.current?.focus();}}>{s}</button>)}</div>
-            <p className="text-xs text-slate-500 mt-6">Currently selected: <button className="text-indigo-300 underline" onClick={()=>setSettingsOpen(true)}>{PROVIDERS[settings.provider].name}</button></p>
+            <p className="text-xs text-slate-500 mt-6">Currently selected: <button className="text-lime-300 underline" onClick={()=>setSettingsOpen(true)}>{PROVIDERS[settings.provider].name}</button></p>
           </div> : <div className="space-y-6">{active.messages.map(m=><Message key={m.id} message={m}
               streaming={busy===active.id&&m.role==='assistant'&&m.status==='streaming'}
               onContinue={continueResponse}
@@ -2780,15 +2862,15 @@ function App() {
                 (Number(m.continuations)||0)<MAX_MANUAL_CONTINUATIONS}/>)}</div>}
         </div>
       </section>
-      {showLatest&&<button type="button" onClick={jumpToLatest} className="absolute bottom-4 right-4 sm:right-8 z-10 flex items-center gap-2 rounded-full bg-indigo-600 hover:bg-indigo-500 border border-indigo-400 px-3 py-2 text-xs font-semibold text-white shadow-xl" aria-label="Jump to latest message"><Icon name="arrow-down" size={15}/> Latest</button>}
+      {showLatest&&<button type="button" onClick={jumpToLatest} className="absolute bottom-4 right-4 sm:right-8 z-10 flex items-center gap-2 rounded-full bg-lime-600 hover:bg-lime-500 border border-lime-400 px-3 py-2 text-xs font-semibold text-white shadow-xl" aria-label="Jump to latest message"><Icon name="arrow-down" size={15}/> Latest</button>}
       </div>
-      <div className="glass shrink-0 border-t border-slate-800 safe-bottom px-3 pt-3 sm:px-6">
+      <div className="glass matrix-composer shrink-0 border-t border-slate-800 safe-bottom px-3 pt-3 sm:px-6">
         <div className="max-w-4xl mx-auto">
           {notice&&<div className="flex gap-2 items-start justify-between bg-amber-500/10 text-amber-200 border border-amber-500/30 rounded-xl px-3 py-2 mb-2 text-xs"><span>{notice}</span><button onClick={()=>setNotice('')} aria-label="Dismiss"><Icon name="x" size={14}/></button></div>}
-          {attachments.length>0&&<div className="flex gap-2 overflow-x-auto thin-scroll pb-2">{attachments.map(a=><div key={a.id} className="flex shrink-0 items-center gap-2 max-w-52 border border-slate-700 rounded-lg p-1.5 bg-slate-900">{a.type==='image'?<img src={a.dataUrl} className="h-9 w-9 object-cover rounded" alt={a.name}/>:<Icon name="file" size={19} className="text-indigo-400"/>}<span className="text-[11px] truncate max-w-28" title={a.name}>{a.name}</span><button className="text-slate-400 hover:text-white" aria-label={`Remove ${a.name}`} onClick={()=>setAttachments(xs=>xs.filter(x=>x.id!==a.id))}><Icon name="x" size={14}/></button></div>)}</div>}
-          <div className="flex items-end gap-1 sm:gap-2 rounded-2xl bg-slate-900 border border-slate-700 focus-within:border-indigo-500/80 p-2 shadow-xl shadow-black/20">
+          {attachments.length>0&&<div className="flex gap-2 overflow-x-auto thin-scroll pb-2">{attachments.map(a=><div key={a.id} className="flex shrink-0 items-center gap-2 max-w-52 border border-slate-700 rounded-lg p-1.5 bg-slate-900">{a.type==='image'?<img src={a.dataUrl} className="h-9 w-9 object-cover rounded" alt={a.name}/>:<Icon name="file" size={19} className="text-lime-400"/>}<span className="text-[11px] truncate max-w-28" title={a.name}>{a.name}</span><button className="text-slate-400 hover:text-white" aria-label={`Remove ${a.name}`} onClick={()=>setAttachments(xs=>xs.filter(x=>x.id!==a.id))}><Icon name="x" size={14}/></button></div>)}</div>}
+          <div className="matrix-composer-input flex items-end gap-1 sm:gap-2 rounded-2xl bg-slate-900 border border-slate-700 focus-within:border-lime-500/80 p-2 shadow-xl shadow-black/20">
             <input type="file" ref={fileRef} className="hidden" multiple accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.txt,.md,.json,.jsonl,.js,.jsx,.ts,.tsx,.py,.cs,.html,.css,.xml,.csv,.yaml,.yml,.java,.go,.rs,.sql,.sh,.ps1,.cpp,.c,.log,.toml,.ini,.conf,.kt,.dart" onChange={e=>attachFiles([...e.target.files])}/>
-            <button className="shrink-0 h-10 w-10 grid place-items-center rounded-xl text-slate-400 hover:bg-slate-800 hover:text-indigo-300 disabled:opacity-40" disabled={reading} title="Attach images, PDF, text or code" aria-label="Add attachment" onClick={()=>fileRef.current?.click()}><Icon name="paperclip" size={20}/></button>
+            <button className="shrink-0 h-10 w-10 grid place-items-center rounded-xl text-slate-400 hover:bg-slate-800 hover:text-lime-300 disabled:opacity-40" disabled={reading} title="Attach images, PDF, text or code" aria-label="Add attachment" onClick={()=>fileRef.current?.click()}><Icon name="paperclip" size={20}/></button>
             <button className="search-toggle" type="button" aria-pressed={webEnabled} aria-label={webEnabled?'Disable web search':'Enable web search'} title={webEnabled?'Web search is ON · Tap to disable':'Web search is OFF · Tap to enable'} onClick={()=>setSettings(current=>({...current,search:{...current.search,enabled:!current.search.enabled}}))}><Icon name="globe" size={19}/></button>
             <textarea ref={inputRef} rows="1" className="composer-text thin-scroll w-full min-w-0 bg-transparent px-1.5 py-2.5 text-sm leading-6 outline-none placeholder:text-slate-500" value={draft} onChange={e=>{setDraft(e.target.value);e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,170)+'px';}} placeholder={reading?'Reading attachment…':'Ask anything…'} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();send();}}}/>
             {busy?<button className="btn btn-soft !p-2.5 shrink-0 !bg-rose-500/20 !text-rose-300" title="Stop generation" aria-label="Stop generation" onClick={stop}><Icon name="stop" size={20}/></button>:<button className="btn btn-primary !p-2.5 shrink-0" title="Send" aria-label="Send message" disabled={reading||(!draft.trim()&&!attachments.length)} onClick={send}><Icon name="send" size={20}/></button>}
