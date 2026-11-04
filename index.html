@@ -177,6 +177,10 @@
     #root .matrix-ui .bg-slate-900 {background-color:rgba(6,27,16,.90);}
     #root .matrix-ui .bg-slate-950 {background-color:rgba(2,13,8,.94);}
     #root .matrix-ui .bg-slate-800 {background-color:rgba(18,48,30,.87);}
+    /* Transparent main and translucent panels win over generic Tailwind surfaces. */
+    #root .matrix-ui .matrix-main.bg-slate-950 {background:rgba(2,12,7,.22);}
+    #root .matrix-ui .matrix-sidebar.bg-slate-900 {background:rgba(3,19,11,.88);}
+    #root .matrix-ui .matrix-composer-input.bg-slate-900 {background:rgba(6,30,16,.94);}
     #root .matrix-ui .border-slate-800 {border-color:#315c3f;}
     #root .matrix-ui .border-slate-700 {border-color:#477456;}
     #root .matrix-ui .text-slate-400 {color:#afc5b4;}
