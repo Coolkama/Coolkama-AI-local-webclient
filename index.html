@@ -1624,7 +1624,7 @@ function apiMessages(thread, systemPrompt, provider) {
           : String(m.content||'');
         if(previous.includes('<dots_function_call>'))previous='[The previous model requested a browser tool instead of producing a final answer.]';
         if(typeof m.diagram?.code==='string'&&m.diagram.code.length<=12000){
-          previous+='\n\n[Previous browser-rendered Mermaid diagram: '+String(m.diagram.title||'Diagram').slice(0,100)+
+          previous+='\n\n['+(m.diagram.renderError?'Previous Mermaid source (render failed): ':'Previous browser-rendered Mermaid diagram: ')+String(m.diagram.title||'Diagram').slice(0,100)+
             '. To revise it, call create_diagram with the complete updated source.]\n'+
             m.diagram.code+'\n[End Mermaid diagram]';
         }
@@ -2209,8 +2209,12 @@ function DiagramPreview({diagram}){
   const [exportError,setExportError]=useState('');
   useEffect(()=>{
     let active=true,url=null;
-    setRendered({svg:null,url:null,loading:true,error:null});
     setExportError('');
+    if(diagram.renderError){
+      setRendered({svg:null,url:null,loading:false,error:diagram.renderError});
+      return;
+    }
+    setRendered({svg:null,url:null,loading:true,error:null});
     renderMermaidSvg(diagram.code).then(svg=>{
       if(!active)return;
       url=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml;charset=utf-8'}));
@@ -2220,7 +2224,7 @@ function DiagramPreview({diagram}){
         error:String(error.message||error).slice(0,400)});
     });
     return ()=>{active=false;if(url)URL.revokeObjectURL(url);};
-  },[diagram.code]);
+  },[diagram.code,diagram.renderError]);
   const source=String(diagram.code||'');
   const title=String(diagram.title||'Diagram');
   return <div className="mt-3 rounded-xl border border-emerald-700/70 bg-emerald-950/30 overflow-hidden">
@@ -2396,6 +2400,21 @@ function DiagnosticsPanel({chatId,onClose}){
   const [level,setLevel]=useState(diagLevel);
   const [revision,setRevision]=useState(0);
   const [onlyChat,setOnlyChat]=useState(true);
+  const [mermaidTest,setMermaidTest]=useState({running:false,text:''});
+  async function testMermaid(){
+    setMermaidTest({running:true,text:'Checking browser Mermaid renderer…'});
+    try{
+      const sample='flowchart LR\n  A[Browser] --> B[Mermaid]';
+      const svg=await renderMermaidSvg(sample);
+      if(!svg.includes('<svg'))throw new Error('No SVG returned');
+      setMermaidTest({running:false,text:'PASS · Mermaid rendered a local SVG ('+svg.length+' characters). No LLM call used.'});
+      diagLog('normal','mermaid-self-test-pass',{svgChars:svg.length,module:MERMAID_MODULE_URL});
+    }catch(error){
+      const detail=String(error.message||error).slice(0,350);
+      setMermaidTest({running:false,text:'FAILED · '+detail});
+      diagLog('normal','mermaid-self-test-fail',{error:detail,module:MERMAID_MODULE_URL});
+    }
+  }
   useEffect(()=>{
     const update=()=>setRevision(x=>x+1);
     window.addEventListener(DIAG_EVENT,update);
@@ -2439,6 +2458,13 @@ function DiagnosticsPanel({chatId,onClose}){
           <button className="btn btn-primary !text-xs" onClick={()=>diagExport(chatId)} disabled={!all.some(e=>e.chatId===chatId)}><Icon name="download" size={15}/> Save chat log</button>
           <button className="btn btn-soft !text-xs" onClick={()=>diagExport()} disabled={!all.length}><Icon name="download" size={15}/> Save all logs</button>
           <button className="btn btn-soft !text-xs text-rose-300" onClick={deleteLog} disabled={!all.length}><Icon name="trash" size={15}/> Clear</button>
+        </div>
+        <div className="border border-emerald-800/60 rounded-xl p-3 space-y-2">
+          <p className="text-xs text-emerald-200 font-semibold">Diagram renderer health check</p>
+          <p className="text-[11px] text-slate-400">Tests Mermaid directly in Chrome, without sending a message or using any Groq/OpenRouter/Gemini credits.</p>
+          <button type="button" className="btn btn-soft !text-xs" disabled={mermaidTest.running}
+            onClick={testMermaid}><Icon name="layers" size={15}/> {mermaidTest.running?'Testing Mermaid…':'Test Mermaid renderer'}</button>
+          {mermaidTest.text&&<p className="text-xs text-slate-200 break-words" role="status">{mermaidTest.text}</p>}
         </div>
         {diagStorageError&&<p className="text-xs text-rose-300 border border-rose-700/40 rounded-lg p-2">Compact browser log storage is full or blocked. Events may not survive a reload. Download a copy.</p>}
         {diagArchiveError&&<p className="text-xs text-rose-300 border border-rose-700/40 rounded-lg p-2">Full Trace IndexedDB error: {diagArchiveError}. Complete payloads may be unavailable; check exported traceErrors.</p>}
