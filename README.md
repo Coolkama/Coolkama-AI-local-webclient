@@ -34,6 +34,14 @@ The initial Matrix restyle made the chat scroll area too opaque on a phone, conc
 
 User bubbles now use dark forest-green rather than bright lime, and both user and assistant content use **phosphor-green text** with brighter accents for Markdown headings, emphasis and links. The user avatar background is toned down as well. The SVG splash markup and four-second startup controller were not changed. All changes are CSS except the visible app build stamp, with no effect on providers, local storage, search, streaming or other functions.
 
+## Free image generation — AI Horde (build v10)
+
+The single-file browser client includes **AI Horde text-to-image** as a separate mode in the message composer (image icon). No registration is required: the default API key is the documented anonymous key `0000000000`. Users may optionally enter their own free AI Horde API key under Settings → Image generation, and choose 512×512 or 768×768. Users must acknowledge that prompts and generated images are sent to community-run workers. Image mode does not send prompts to the configured chat model or Tavily.
+
+The browser POSTs a single-image request to `https://aihorde.net/api/v2/generate/async`, checks the queue via `/generate/check/{id}`, retrieves the result once from `/generate/status/{id}`, and supports Stop via a best-effort DELETE. A ten-minute client wait limit and conservative local usage counter (2/minute, 20/day) avoid uncontrolled requests; they are not guaranteed upstream limits. Generated images appear in the chat with Download and Open original links. Image links can expire, and direct download may fail when the image host disallows CORS; Open original is the fallback. Browser suspension or closing the tab interrupts the operation. A successful API response and image display depend on external workers and the user's browser CORS policy, and have **not** been verified with a live anonymous generation in this development environment.
+
+The original SVG splash, Matrix chat styling, existing text providers and their free-only safeguards remain unchanged. No backend, paid image provider, new CDN dependency or GitHub Actions workflow is required.
+
 ## Matrix-green chat interface (4 November 2026)
 
 The actual single-file app is now themed to the **existing SVG robot splash**, rather than using the earlier slate/indigo look. A fixed, purely decorative Matrix-style binary code-rain layer sits behind the app. The conversation sidebar, chat area, header and composer are distinct translucent dark-green panels; user messages are bright lime-green with dark text, assistant messages are deep green with pale text, and borders, selected chats, settings, search tools and buttons use coordinated emerald/lime accents. The splash illustration and four-second startup behaviour remain unchanged.
