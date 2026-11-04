@@ -2536,7 +2536,7 @@ function Message({message,streaming,onContinue,canContinue=false,onApproveImage,
           <Icon name={isSpeaking?'stop':'volume'} size={16}/>
         </button>
         <button type="button" onClick={()=>onRetry?.(message.id)} disabled={!canRetry}
-          aria-label="Retry assistant response" title="Regenerate with current free model settings; older replies open a separate conversation"
+          aria-label="Retry assistant response" title="Uses another free request. The latest reply is replaced; older replies open a separate conversation."
           className="inline-flex items-center justify-center min-w-9 h-9 rounded-lg hover:bg-emerald-900/45 hover:text-lime-100 disabled:opacity-40">
           <Icon name="retry" size={16}/>
         </button>
@@ -3056,6 +3056,7 @@ function App() {
       enforceFreeOnly(provider,config,settings);
       if(LOCAL_CAPS[provider])checkCap(provider);
     }catch(error){setNotice(error.message||String(error));return;}
+    stopSpeaking();
     const original=String(last.content||'');
     if(!original.trim()){setNotice('There is no partial answer to continue.');return;}
     const chatId=active.id,controller=new AbortController(),diagCtx={chatId,turnId:messageId,round:count+1,continuation:true};
@@ -3210,6 +3211,7 @@ function App() {
     if(!imageSettings.acknowledged){setNotice('Please acknowledge AI Horde image-sharing/privacy terms below the composer before generating.');return;}
     if(!content||content.length>3000){setNotice('Image prompt must be between 1 and 3,000 characters.');return;}
     try{checkCap('horde');}catch(e){setNotice(e.message||String(e));return;}
+    stopSpeaking();
     const chatId=retry&&!retry.isLatest?uid():active.id;
     const assistantId=retry?.isLatest?retry.answer.id:uid();
     followTailRef.current=true;setShowLatest(false);
@@ -3279,6 +3281,7 @@ function App() {
     catch(e){setNotice(e.message);setSettingsOpen(true);return;}
     let searchMode=null;
     try {searchMode=searchRoute(provider,settings);} catch(e){setNotice(e.message);setSettingsOpen(true);return;}
+    stopSpeaking();
     const content=retry?String(retry.user.content||'').trim():draft.trim();
     const files=retry?[...(retry.user.attachments||[])]:[...attachments];
     const chatId=retry&&!retry.isLatest?uid():active.id;
