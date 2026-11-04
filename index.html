@@ -3041,7 +3041,7 @@ function App() {
     let output='',lastPaint=0,allSources=[],searchLog=[],openLog=[],incomplete=false,incompleteReason=null,autoEligible=false,autoRounds=0,continuationFailure=null;
     let continuationPrefix=null;
     let imageCallsUsed=0,imageConsentNeeded=false;
-    let diagramAttempts=0,diagramCreated=false;
+    let diagramAttempts=0,diagramCreated=false,diagramFatalError=null;
     const imageTasks=[];
     const openedPages=new Map(),openFailures=new Map();
     const patchAssistant=changes=>patchChat(chatId,c=>({...c,updatedAt:Date.now(),messages:c.messages.map(m=>m.id===assistantId?{...m,...changes}:m)}));
@@ -3206,14 +3206,15 @@ function App() {
             ...(provider==='openrouter'&&response.reasoningDetails?.length?{reasoning_details:response.reasoningDetails}:{})});
           for(const call of calls) {
             if(controller.signal.aborted)throw new DOMException('Stopped','AbortError');
-            let result;
+            let result,diagramCandidate=null;
             try {
               if(call.function?.name==='create_diagram'){
                  if(diagramCreated)throw new Error('Only one diagram can be created per user message.');
                  if(diagramAttempts>=3)throw new Error('Maximum three diagram validation attempts per message.');
-                 diagramAttempts++;
                  const {code,title}=toolDiagramRequest(call);
-                 patchAssistant({diagramStatus:'Validating Mermaid diagram locally…',diagramError:null});
+                 diagramCandidate={code,title};
+                 diagramAttempts++;
+                 patchAssistant({diagramStatus:'Validating and rendering Mermaid locally…',diagramError:null});
                  await validateMermaidInBrowser(code);
                  if(controller.signal.aborted)throw new DOMException('Stopped','AbortError');
                  diagramCreated=true;
@@ -3306,13 +3307,33 @@ function App() {
             }catch(error) {
               if(error.name==='AbortError')throw error;
               result={error:error.message||String(error)};
+              const diagramFailure=call.function?.name==='create_diagram';
+              const libraryFailure=diagramFailure&&error.name==='MermaidLoadError';
+              if(libraryFailure){
+                diagramFatalError=result.error;
+                result.retryable=false;
+                result.message='Browser Mermaid module unavailable. The browser has retained the source; further model calls cannot fix its library load.';
+              }
               patchAssistant({searchingWeb:false,
-                ...(call.function?.name==='create_diagram'
-                  ?{diagramStatus:null,diagramError:'Mermaid diagram rejected: '+result.error}:{})});
-              diagLog('normal','tool-error',{message:result.error},roundCtx);
+                ...(diagramFailure?{
+                  diagramStatus:null,
+                  diagramError:(libraryFailure?'Mermaid library unavailable: ':'Mermaid source rejected: ')+result.error,
+                  ...(libraryFailure&&diagramCandidate
+                    ?{diagram:{...diagramCandidate,renderError:result.error}}:{})
+                }:{})});
+              if(diagramFailure)diagLog('normal','diagram-tool-validation-error',
+                {kind:libraryFailure?'library-load':'source-or-render',error:result.error,
+                  attempt:diagramAttempts,remaining:Math.max(0,3-diagramAttempts),
+                  codeChars:diagramCandidate?.code.length||0},roundCtx);
+              diagLog('normal','tool-error',{name:call.function?.name,message:result.error},roundCtx);
               if(String(error.message||'').includes('FREE-ONLY STOP:')||String(error.message||'').includes('counter cannot be saved'))throw error;
             }
             messages.push({role:'tool',tool_call_id:call.id,content:JSON.stringify(result)});
+          }
+          if(diagramFatalError){
+            output='Mermaid could not load in this browser, so the diagram was not rendered. '+
+              'Its source is retained in the card below for downloading or reuse. Details: '+diagramFatalError;
+            paint();answered=true;break;
           }
           if(searchMode)status('AI reviewing search evidence…');
            else if(imageCallsUsed)status('Image handed to browser · preparing reply…');
