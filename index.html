@@ -3199,24 +3199,31 @@ function App() {
     try{await completeHordeAssistantJob({prompt,size,key:opts.key||'',signal:controller.signal,trace,patch});}
     finally{workRef.current=null;setBusy(null);}
   }
-  async function sendImage(){
-    if(busy||workRef.current||reading||!active||!draft.trim())return;
-    if(attachments.length){setNotice('AI Horde currently supports text-to-image prompts only. Switch to chat to analyse or send attached files.');return;}
+  async function sendImage(retry=null){
+    if(busy||workRef.current||reading||!active||(!retry&&!draft.trim()))return;
+    if(!retry&&attachments.length){setNotice('AI Horde currently supports text-to-image prompts only. Switch to chat to analyse or send attached files.');return;}
+    const content=retry?String(retry.user.content||'').trim():draft.trim();
     const imageSettings={...defaultImageHorde(),...(settings.imageHorde||{})};
     if(!imageSettings.acknowledged){setNotice('Please acknowledge AI Horde image-sharing/privacy terms below the composer before generating.');return;}
-    if(draft.trim().length>3000){setNotice('Image prompt must be 3,000 characters or fewer.');return;}
+    if(!content||content.length>3000){setNotice('Image prompt must be between 1 and 3,000 characters.');return;}
     try{checkCap('horde');}catch(e){setNotice(e.message||String(e));return;}
-    const chatId=active.id,content=draft.trim(),assistantId=uid();
+    const chatId=retry&&!retry.isLatest?uid():active.id;
+    const assistantId=retry?.isLatest?retry.answer.id:uid();
     followTailRef.current=true;setShowLatest(false);
-    const userMsg={id:uid(),role:'user',content,attachments:[],imagePrompt:true,webSearch:false,createdAt:Date.now()};
+    const userMsg=retry?null:{id:uid(),role:'user',content,attachments:[],imagePrompt:true,webSearch:false,createdAt:Date.now()};
     const assistantMsg={id:assistantId,role:'assistant',content:'Submitting to AI Horde…',
       imageProvider:'horde',imageProgress:null,status:'streaming',webSearch:false,createdAt:Date.now()};
-    const thread={...active,title:active.messages.length?active.title:titleFrom(content,[]),
-      messages:[...active.messages,userMsg,assistantMsg]};
+    const thread=retry?{...active,id:chatId,updatedAt:Date.now(),
+      title:retry.isLatest?active.title:('Retry · '+active.title).slice(0,80),
+      messages:[...retry.history,assistantMsg]}:
+      {...active,title:active.messages.length?active.title:titleFrom(content,[]),
+        messages:[...active.messages,userMsg,assistantMsg]};
     const controller=new AbortController();
     workRef.current={id:chatId,turnId:assistantId,controller};
-    setChats(old=>old.map(c=>c.id===chatId?thread:c));
-    setDraft('');setBusy(chatId);
+    if(retry&&!retry.isLatest){setChats(old=>[thread,...old]);setActiveId(chatId);}
+    else setChats(old=>old.map(c=>c.id===chatId?thread:c));
+    if(!retry)setDraft('');
+    setBusy(chatId);
     const trace={chatId,turnId:assistantId},key=imageSettings.key||'';
     const patch=values=>patchChat(chatId,c=>({...c,updatedAt:Date.now(),
       messages:c.messages.map(m=>m.id===assistantId?{...m,...values}:m)}));
@@ -3245,9 +3252,23 @@ function App() {
       workRef.current=null;setBusy(null);
     }
   }
-  async function send() {
-    if(busy||workRef.current||reading||(!draft.trim()&&!attachments.length)||!active)return;
-    if(imageMode)return sendImage();
+  function retryResponse(messageId){
+    if(busy||workRef.current||reading||!active)return;
+    // Retrying does not append the previous assistant answer as model context.
+    // An older response opens a branch to preserve later dialogue unchanged.
+    stopSpeaking();
+    return send(messageId);
+  }
+  async function send(retryMessageId=null) {
+    const isRetry=typeof retryMessageId==='string';
+    if(busy||workRef.current||reading||(!isRetry&&!draft.trim()&&!attachments.length)||!active)return;
+    let retry=null;
+    if(isRetry){
+      try{retry=replyRetryPlan(active,retryMessageId);}
+      catch(error){setNotice(error.message||String(error));return;}
+      if(retry.answer.imageProvider==='horde'&&retry.user.imagePrompt)return sendImage(retry);
+    }
+    if(imageMode&&!isRetry)return sendImage();
     const provider=settings.provider,config={...settings.profiles[provider]};
     if(provider!=='demo'&&provider!=='ollama'&&!config.key.trim()) {setNotice('Add an API key in Settings, or select Test Mode.');setSettingsOpen(true);return;}
     if(!config.model.trim()||(provider!=='demo'&&!config.url.trim())) {setNotice('Choose a free model in Settings.');setSettingsOpen(true);return;}
@@ -3255,17 +3276,28 @@ function App() {
     catch(e){setNotice(e.message);setSettingsOpen(true);return;}
     let searchMode=null;
     try {searchMode=searchRoute(provider,settings);} catch(e){setNotice(e.message);setSettingsOpen(true);return;}
-    const chatId=active.id,content=draft.trim(),files=[...attachments];
-    // An explicit send is an intentional navigation to the newest reply.
+    const content=retry?String(retry.user.content||'').trim():draft.trim();
+    const files=retry?[...(retry.user.attachments||[])]:[...attachments];
+    const chatId=retry&&!retry.isLatest?uid():active.id;
+    // Regeneration is an explicit navigation to the newest reply in its branch.
     followTailRef.current=true;setShowLatest(false);
-    const userMsg={id:uid(),role:'user',content,attachments:files,webSearch:!!searchMode,createdAt:Date.now()};
-    const assistantId=uid(),assistantMsg={id:assistantId,role:'assistant',content:'',status:'streaming',searchStatus:searchMode?'Asking AI whether to search…':null,webSearch:!!searchMode,searchingWeb:false,createdAt:Date.now(),searchLog:[],openLog:[]};
-    const nextThread={...active,title:active.messages.length===0?titleFrom(content,files):active.title,messages:[...active.messages,userMsg,assistantMsg]};
-    setChats(old=>old.map(c=>c.id===chatId?nextThread:c));
-    setDraft('');setAttachments([]);
+    const userMsg=retry?null:{id:uid(),role:'user',content,attachments:files,webSearch:!!searchMode,createdAt:Date.now()};
+    const assistantId=retry?.isLatest?retry.answer.id:uid();
+    const assistantMsg={id:assistantId,role:'assistant',content:'',status:'streaming',searchStatus:searchMode?'Asking AI whether to search…':null,webSearch:!!searchMode,searchingWeb:false,createdAt:Date.now(),searchLog:[],openLog:[]};
+    const nextThread=retry?{...active,id:chatId,updatedAt:Date.now(),
+      title:retry.isLatest?active.title:('Retry · '+active.title).slice(0,80),
+      messages:[...retry.history,assistantMsg]}:
+      {...active,title:active.messages.length===0?titleFrom(content,files):active.title,
+        messages:[...active.messages,userMsg,assistantMsg]};
+    if(retry&&!retry.isLatest){setChats(old=>[nextThread,...old]);setActiveId(chatId);}
+    else setChats(old=>old.map(c=>c.id===chatId?nextThread:c));
+    if(!retry){setDraft('');setAttachments([]);}
     const controller=new AbortController();workRef.current={id:chatId,turnId:assistantId,controller};setBusy(chatId);
     const diagCtx={chatId,turnId:assistantId};
-    diagLog('normal','turn-start',{provider,requestedModel:config.model,webEnabled:!!searchMode,attachedFiles:files.map(f=>({name:f.name,type:f.type,truncated:!!f.truncated})),historyMessages:nextThread.messages.length-2},diagCtx);
+    diagLog('normal',isRetry?'turn-retry':'turn-start',{provider,requestedModel:config.model,webEnabled:!!searchMode,
+      retryMessageId:isRetry?retryMessageId:null,branched:!!retry&&!retry.isLatest,
+      attachedFiles:files.map(f=>({name:f.name,type:f.type,truncated:!!f.truncated})),
+      historyMessages:nextThread.messages.length-(retry?1:2)},diagCtx);
     diagLog('full','user-message',{text:content},diagCtx);
     const requestDateContext=runtimeDateContext();
     let output='',lastPaint=0,allSources=[],searchLog=[],openLog=[],incomplete=false,incompleteReason=null,autoEligible=false,autoRounds=0,continuationFailure=null;
