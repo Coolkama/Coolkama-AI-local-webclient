@@ -5,16 +5,66 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#020617" />
   <title>Tight Arse AI · Chat</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script crossorigin src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7/babel.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github-dark.min.css" />
-  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/common.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+
   <style>
+    /* First-paint splash: no React, external fonts, images or network access. */
+    body.splash-active { overflow: hidden; }
+    body.splash-active #root { visibility: hidden; }
+    #launch-splash {
+      position: fixed; inset: 0; z-index: 99999; display: flex;
+      align-items: center; justify-content: center; box-sizing: border-box;
+      min-height: 100svh; min-height: 100dvh;
+      padding: max(24px, env(safe-area-inset-top, 0px)) 22px max(28px, env(safe-area-inset-bottom, 0px));
+      color: #d3fce1; text-align: center; overflow: hidden; isolation: isolate;
+      background: radial-gradient(ellipse at 50% 37%, #123b2a 0%, #06140e 42%, #010703 86%);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      opacity: 1; transition: opacity 460ms ease, visibility 460ms ease;
+    }
+    #launch-splash::before {
+      content: ""; position: absolute; inset: 0; pointer-events: none; z-index: -1;
+      background-image: linear-gradient(#45ff9610 1px, transparent 1px),
+                        linear-gradient(90deg, #45ff9610 1px, transparent 1px);
+      background-size: 30px 30px; opacity: .45;
+      mask-image: radial-gradient(ellipse at 50% 40%, #000, transparent 75%);
+    }
+    #launch-splash::after {
+      content: "01001100 10010110 11000101 00110010 00101011 10100111 10101100";
+      position: absolute; inset: 0; z-index: -1; overflow: hidden;
+      transform: skewY(-12deg) translateY(-10%); pointer-events: none;
+      font-size: clamp(14px, 3vw, 24px); font-weight: 700; line-height: 4.1;
+      letter-spacing: .8em; overflow-wrap: anywhere; opacity: .075; color: #73ff97;
+      animation: cheap-rain 8s linear infinite alternate;
+    }
+    #launch-splash.is-leaving { opacity: 0; visibility: hidden; pointer-events: none; }
+    .splash-panel { width: min(100%, 390px); display: flex; flex-direction: column; align-items: center; }
+    .splash-art {
+      width: min(77vw, 318px); max-height: 42dvh; display: block; overflow: visible;
+      filter: drop-shadow(0 0 19px #42ff7b36);
+      animation: robot-wobble 3.4s ease-in-out infinite;
+    }
+    .splash-brand { margin: 12px 0 0; color: #b2ffcc; font-weight: 900;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: clamp(28px, 7.1vw, 42px); line-height: 1.1; letter-spacing: -.035em;
+      text-shadow: 0 0 24px #44ff9960; }
+    .splash-tag { margin: 9px 0 33px; font-size: 10px; letter-spacing: .22em;
+      text-transform: uppercase; color: #7bab8e; }
+    .splash-progress { width: min(100%, 255px); height: 6px; position: relative;
+      border: 1px solid #317446; border-radius: 99px; overflow: hidden;
+      background: #092317; box-shadow: 0 0 16px #0deb5c15; }
+    .splash-progress::before { content: ""; position: absolute; inset: 0;
+      width: 38%; background: linear-gradient(90deg, transparent, #6dff9b 45%, #c4ffd1 70%, transparent);
+      box-shadow: 0 0 18px #57ff8b; animation: budget-load 1.45s ease-in-out infinite; }
+    .splash-message { margin-top: 14px; font-size: 12px; letter-spacing: .065em; color: #8ddbaa; }
+    .splash-error { margin: 15px 0 0; font-size: 11px; color: #d8b65b; max-width: 290px; line-height: 1.6; }
+    @keyframes budget-load { from {transform: translateX(-110%)} to {transform: translateX(310%)} }
+    @keyframes robot-wobble { 0%,100% {transform: translateY(0) rotate(-.7deg)} 50% {transform: translateY(-5px) rotate(.65deg)} }
+    @keyframes cheap-rain { from {transform: skewY(-12deg) translateY(-10%)} to {transform: skewY(-12deg) translateY(15%)} }
+    @media (prefers-reduced-motion: reduce) {
+      .splash-art, #launch-splash::after, .splash-progress::before {animation: none;}
+      .splash-progress::before {transform:translateX(75%);}
+      #launch-splash {transition-duration: 0ms;}
+    }
+
     :root { color-scheme: dark; }
     * { -webkit-tap-highlight-color: transparent; }
     html, body, #root { height: 100%; margin: 0; background: #020617; }
@@ -82,11 +132,121 @@
     .quota-progress > span.full { background:#fb7185; }
   </style>
 </head>
-<body>
+<body class="splash-active">
+
+<!-- Visible immediately, before any CDN or React dependency is loaded. -->
+<div id="launch-splash" role="status" aria-live="polite" aria-label="Tight Arse AI is starting">
+  <div class="splash-panel">
+    <!-- Inline grumpy, bargain-basement Matrix-green robot fallback illustration.
+         This can be replaced with the original mascot artwork once its asset is available. -->
+    <svg class="splash-art" viewBox="0 0 400 385" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Grumpy patched-together green AI robot">
+      <defs>
+        <linearGradient id="cheap-metal" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#405d4b"/><stop offset=".42" stop-color="#233f32"/>
+          <stop offset="1" stop-color="#0b1c17"/>
+        </linearGradient>
+        <linearGradient id="cheap-face" x1="0" y1="0" x2=".8" y2="1">
+          <stop offset="0" stop-color="#253c34"/><stop offset="1" stop-color="#0b1714"/>
+        </linearGradient>
+        <filter id="cheap-glow"><feGaussianBlur stdDeviation="5"/></filter>
+      </defs>
+      <circle cx="201" cy="184" r="162" fill="none" stroke="#42e978" stroke-width="1" opacity=".15" stroke-dasharray="3 12"/>
+      <circle cx="201" cy="184" r="139" fill="none" stroke="#42e978" stroke-width="1" opacity=".15" stroke-dasharray="26 14 3 16"/>
+      <path d="M49 177H19m361 0h-28M197 15V3" stroke="#52ff92" stroke-width="2" opacity=".35"/>
+      <!-- The antenna is bent because this is the budget model. -->
+      <path d="M187 82l8-28-21-19 8-18" stroke="#6eaf7e" stroke-width="9" stroke-linecap="round" fill="none"/>
+      <path d="M187 82l8-28-21-19 8-18" stroke="#1c3325" stroke-width="4" stroke-linecap="round" fill="none"/>
+      <circle cx="183" cy="16" r="9" fill="#a8ff9f" stroke="#4ff46f" stroke-width="4"/>
+      <circle cx="183" cy="16" r="15" fill="#72fa89" opacity=".3" filter="url(#cheap-glow)"/>
+      <!-- Lumpy welded shoulders and cheap exposed fasteners. -->
+      <path d="M82 292l-28 18-12 52h91l20-42zM318 292l28 18 13 52h-92l-21-42z" fill="#182b24" stroke="#58ae72" stroke-width="5"/>
+      <rect x="97" y="280" width="210" height="92" rx="25" fill="url(#cheap-metal)" stroke="#76c58b" stroke-width="6"/>
+      <path d="M116 304h168l9 49H108z" fill="#0c231a" stroke="#3f7652" stroke-width="3"/>
+      <rect x="143" y="314" width="114" height="30" rx="5" fill="#0b160e" stroke="#6bff96" stroke-width="2"/>
+      <text x="200" y="334" text-anchor="middle" fill="#95ff9b" font-size="15" font-family="monospace" font-weight="bold">£0.00 / AI</text>
+      <path d="M98 345l-18 11M302 347l17 9" stroke="#92e99a" stroke-width="3"/>
+      <circle cx="111" cy="299" r="6" fill="#131813" stroke="#9bd9a1" stroke-width="2"/>
+      <circle cx="289" cy="299" r="6" fill="#131813" stroke="#9bd9a1" stroke-width="2"/>
+      <!-- Crooked ears, bolted on with different screws. -->
+      <path d="M86 152l-18 8-2 61 23 9M314 152l18 8 2 61-23 9" fill="#304e3b" stroke="#68c782" stroke-width="6" stroke-linejoin="round"/>
+      <circle cx="76" cy="193" r="8" fill="#08140c" stroke="#94f6a2" stroke-width="3"/>
+      <path d="M70 192h12" stroke="#94f6a2" stroke-width="2"/>
+      <circle cx="324" cy="193" r="9" fill="#0f1d16" stroke="#94f6a2" stroke-width="3"/>
+      <path d="M318 187l12 12m0-12-12 12" stroke="#94f6a2" stroke-width="2"/>
+      <!-- Wonky robot head with dented corners and visible patchwork. -->
+      <path d="M107 91l53-19h88l51 19 17 53-5 92-42 43H133l-43-43-4-95z" fill="url(#cheap-metal)" stroke="#8bdda0" stroke-width="7" stroke-linejoin="round"/>
+      <path d="M113 113l54-17h70l48 16 12 42-4 73-31 31H139l-29-30-3-75z" fill="url(#cheap-face)" stroke="#466f52" stroke-width="3"/>
+      <path d="M105 114l26-9m142-2 24 10M103 230l23 20m173-18-19 19" fill="none" stroke="#b6ffb0" stroke-width="4" opacity=".7"/>
+      <path d="M127 113l27-10-9 16h-23z" fill="#76aa79" opacity=".4"/>
+      <path d="M259 110l18 6-6 17" stroke="#c0e4a6" fill="none" opacity=".6" stroke-width="3"/>
+      <circle cx="126" cy="135" r="4" fill="#85f294"/><circle cx="273" cy="135" r="4" fill="#85f294"/>
+      <!-- Oversized disapproving brows: one eye narrows, the other stares. -->
+      <path d="M121 159l65 17-3 17-65-11z" fill="#06120d" stroke="#6fd48b" stroke-width="2"/>
+      <path d="M216 175l61-19 9 23-69 19z" fill="#06120d" stroke="#6fd48b" stroke-width="2"/>
+      <path d="M132 194l42 4-5 12-36-2z" fill="#66ff88" opacity=".8"/>
+      <path d="M130 197l41 4" stroke="#d1ffd4" stroke-width="3"/>
+      <path d="M222 203q21-16 45-9l-1 22q-21 9-42-1z" fill="#a2ff9b" opacity=".35" filter="url(#cheap-glow)"/>
+      <path d="M223 202q22-16 44-9l-1 22q-21 9-43-1z" fill="#0a2614" stroke="#72ff99" stroke-width="4"/>
+      <circle cx="246" cy="204" r="9" fill="#b0ffa8"/><circle cx="249" cy="202" r="4" fill="#051b12"/>
+      <path d="M190 204h18" stroke="#93d6a5" stroke-width="3"/>
+      <!-- Disgruntled frown, scratches and cheap maintenance patch. -->
+      <path d="M158 237q40-27 83 1" stroke="#06150d" stroke-width="13" fill="none" stroke-linecap="round"/>
+      <path d="M158 237q40-27 83 1" stroke="#9bdcab" stroke-width="4" fill="none" stroke-linecap="round"/>
+      <path d="M135 245l14 6m113-8-14 8M101 144l10 10m174 73 8 8" stroke="#6cad81" stroke-width="3"/>
+      <path d="M110 264h20m140 0h17" stroke="#a3e4a8" opacity=".5" stroke-width="2"/>
+      <text x="200" y="302" font-size="7" fill="#c5fac3" text-anchor="middle" font-family="monospace">NO FRILLS • NO FEES</text>
+      <path d="M88 322l-14 8m251-8 14 8" stroke="#82f19b" stroke-width="5"/>
+    </svg>
+    <h1 class="splash-brand">TIGHT ARSE AI</h1>
+    <p class="splash-tag">Maximum intelligence · Minimum spend</p>
+    <div class="splash-progress" aria-hidden="true"></div>
+    <p id="launch-splash-message" class="splash-message">Booting on a budget...</p>
+    <p id="launch-splash-slow" class="splash-error" hidden>Startup is taking longer than usual. Check your connection if this continues.</p>
+  </div>
+</div>
+<script>
+(function(){
+  "use strict";
+  const MIN_SPLASH_MS=4000;
+  const startedAt=performance.now();
+  const splash=document.getElementById("launch-splash");
+  let ready=false,closing=false;
+  let slowTimer=null;
+  const finish=()=>{
+    if(!ready||closing)return;
+    closing=true;
+    if(slowTimer!==null)clearTimeout(slowTimer);
+    document.body.classList.remove("splash-active");
+    splash.classList.add("is-leaving");
+    window.setTimeout(()=>splash.remove(),500);
+  };
+  window.__tightArseSplashReady=()=>{
+    if(ready)return;
+    ready=true;
+    document.getElementById("launch-splash-message").textContent="Ready. Still not paying extra.";
+    window.setTimeout(finish,Math.max(0,MIN_SPLASH_MS-(performance.now()-startedAt)));
+  };
+  slowTimer=window.setTimeout(()=>{
+    if(!ready){
+      document.getElementById("launch-splash-message").textContent="Still starting...";
+      document.getElementById("launch-splash-slow").hidden=false;
+    }
+  },20000);
+})();
+</script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github-dark.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/common.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <div id="root"></div>
 <script type="text/babel">
 const {useState, useEffect, useLayoutEffect, useRef, useMemo} = React;
-const APP_BUILD = '2026-11-03-gemini-discovery-v6';
+const APP_BUILD = '2026-11-04-splash-v7';
 const STORAGE_KEY = 'llm-workbench-v1';
 const USAGE_KEY = 'llm-workbench-free-only-usage-v1';
 // These are deliberately conservative CLIENT-ONLY stops, NOT the providers' real quotas.
@@ -1957,6 +2117,10 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
   </div>;
 }
 function App() {
+  // A real React commit signals readiness; splash still enforces >=4 seconds.
+  // CDN failures or render crashes leave the splash visible instead of
+  // exposing an incomplete UI.
+  useEffect(()=>{ window.__tightArseSplashReady?.(); },[]);
   const [initial] = useState(readSaved);
   const [chats,setChats]=useState(initial.chats.length?initial.chats:[newChat()]);
   const [activeId,setActiveId]=useState(initial.chats.some(c=>c.id===initial.activeId)?initial.activeId:(initial.chats[0]?.id || null));
