@@ -28,6 +28,12 @@ Client-side rate counters are **not** a billing guarantee: use genuine free prov
 
 Source code and documentation only. GitHub Actions have been disabled by the owner; do not enable Actions or add workflows, CI, cache/artefact storage, Packages, Codespaces, Git LFS or other chargeable infrastructure without explicit approval.
 
+## Matrix-green chat interface (4 November 2026)
+
+The actual single-file app is now themed to the **existing SVG robot splash**, rather than using the earlier slate/indigo look. A fixed, purely decorative Matrix-style binary code-rain layer sits behind the app. The conversation sidebar, chat area, header and composer are distinct translucent dark-green panels; user messages are bright lime-green with dark text, assistant messages are deep green with pale text, and borders, selected chats, settings, search tools and buttons use coordinated emerald/lime accents. The splash illustration and four-second startup behaviour remain unchanged.
+
+The effect uses **inline HTML/CSS only**, with no image downloads, third-party animation libraries, new APIs, network calls or server-side processing. The code-rain layer is noninteractive (`pointer-events:none`, `aria-hidden=true`) and uses CSS keyframes; `prefers-reduced-motion` disables animation. It does not touch chat persistence, source files, inference requests, routing, quotas, models, streaming or diagnostics. On smaller phones the conversation sidebar retains its existing drawer functionality. This is a UI-only change; we have performed static layout/source checks, but not a live phone-browser visual acceptance test.
+
 ## App launch splash
 
 The launch screen is **plain inline HTML/CSS/SVG**, visible before the browser loads Tailwind, React, Babel, PDF.js or the other CDN libraries. Its design is dark, Matrix-green and deliberately grumpy: a cheap, patched-together robot, the Tight Arse AI name and a neon-green animated loading bar. There is **no paid service, additional HTTP image request or runtime dependency** for the included illustration.
@@ -42,7 +48,7 @@ Local simulated timing tests cover ready at 0 s, 1 s, 6.5 s, and never ready; th
 
 For static hosting, select **Settings → Pages → Deploy from a branch → main → /(root)**. The root-level `.nojekyll` file disables Jekyll processing; this repository needs no application build step. If the public site is not published yet, review the Pages publishing status and GitHub's deployment messages. The expected URL is https://coolkama.github.io/Coolkama-AI-local-webclient/ (only after successful publication).
 
-**Confirm that the latest version was actually published:** The bottom of the left-hand chat sidebar displays `Build: 2026-11-04-splash-v7`. If the label is missing, the browser is running an older `index.html`, or GitHub Pages has not updated. Open the Pages website with a fresh query string, e.g. `?version=20261103-provider-adapters-v2`, and reload. Query strings can bypass stale browser HTML caches but cannot publish an unbuilt deployment. The GitHub commit on `main` is not proof of a live Pages deployment; inspect **Settings → Pages** for the published source and status. No GitHub Actions or paid hosting infrastructure are enabled by this repository.
+**Confirm that the latest version was actually published:** The bottom of the left-hand chat sidebar displays `Build: 2026-11-04-matrix-chat-v8`. If the label is missing, the browser is running an older `index.html`, or GitHub Pages has not updated. Open the Pages website with a fresh query string, e.g. `?version=20261103-provider-adapters-v2`, and reload. Query strings can bypass stale browser HTML caches but cannot publish an unbuilt deployment. The GitHub commit on `main` is not proof of a live Pages deployment; inspect **Settings → Pages** for the published source and status. No GitHub Actions or paid hosting infrastructure are enabled by this repository.
 
 ## Gemini model discovery (native API)
 
