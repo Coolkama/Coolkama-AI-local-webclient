@@ -2924,11 +2924,53 @@ function App() {
   const [imageMode,setImageMode]=useState(false);
   const [usageRevision,setUsageRevision]=useState(0);
   const [showLatest,setShowLatest]=useState(false);
+  const [speakingMessageId,setSpeakingMessageId]=useState(null);
+  const speechRef=useRef({sequence:0,messageId:null});
   const inputRef=useRef(null),fileRef=useRef(null),chatScrollRef=useRef(null),workRef=useRef(null);
   const followTailRef=useRef(true),lastChatRef=useRef(null);
   const active=chats.find(c=>c.id===activeId)||chats[0];
   const profile=settings.profiles[settings.provider];
   const webEnabled=!!settings.search.enabled;
+  function stopSpeaking(){
+    speechRef.current.sequence++;
+    speechRef.current.messageId=null;
+    try{window.speechSynthesis?.cancel();}catch{}
+    setSpeakingMessageId(null);
+  }
+  function speakResponse(message){
+    if(speechRef.current.messageId===message.id){stopSpeaking();return;}
+    if(!('speechSynthesis' in window)||!('SpeechSynthesisUtterance' in window)){
+      setNotice('Text-to-speech is not supported by this browser.');return;
+    }
+    const parts=speechChunks(readableReplyText(message));
+    if(!parts.length){setNotice('There is no spoken text in this reply.');return;}
+    stopSpeaking();
+    const sequence=speechRef.current.sequence;
+    speechRef.current.messageId=message.id;
+    setSpeakingMessageId(message.id);
+    let index=0;
+    const next=()=>{
+      if(speechRef.current.sequence!==sequence||speechRef.current.messageId!==message.id)return;
+      if(index>=parts.length){
+        speechRef.current.messageId=null;setSpeakingMessageId(null);return;
+      }
+      const speech=new SpeechSynthesisUtterance(parts[index++]);
+      speech.lang=navigator.language||'en-GB';
+      speech.rate=1;
+      speech.onend=next;
+      speech.onerror=event=>{
+        if(speechRef.current.sequence!==sequence)return;
+        speechRef.current.messageId=null;setSpeakingMessageId(null);
+        if(!['canceled','interrupted'].includes(event.error))
+          setNotice('Browser speech stopped: '+String(event.error||'speech synthesis unavailable'));
+      };
+      try{window.speechSynthesis.speak(speech);}
+      catch(error){speechRef.current.messageId=null;setSpeakingMessageId(null);
+        setNotice('Browser speech failed: '+String(error.message||error));}
+    };
+    next();
+  }
+  useEffect(()=>()=>{speechRef.current.sequence++;try{window.speechSynthesis?.cancel();}catch{}},[]);
   useEffect(()=>{
     try {localStorage.setItem(STORAGE_KEY,JSON.stringify({chats,activeId:active?.id||activeId,settings}));}
     catch(e) {setNotice('Browser storage is full or unavailable. Large images may not survive a reload. Delete older chats or use smaller images.');}
@@ -2960,15 +3002,19 @@ function App() {
   }
   useEffect(()=>{if(!draft&&inputRef.current)inputRef.current.style.height='auto';},[draft]);
   useEffect(()=>{if(notice){const id=setTimeout(()=>setNotice(''),7000);return()=>clearTimeout(id);}},[notice]);
-  function addChat(){const c=newChat();setChats(old=>[c,...old]);setActiveId(c.id);setDraft('');setAttachments([]);setDrawer(false);}
-  function changeChat(id){setActiveId(id);setDrawer(false);setDraft('');setAttachments([]);}
+  function addChat(){stopSpeaking();const c=newChat();setChats(old=>[c,...old]);setActiveId(c.id);setDraft('');setAttachments([]);setDrawer(false);}
+  function changeChat(id){stopSpeaking();setActiveId(id);setDrawer(false);setDraft('');setAttachments([]);}
   function deleteChat(id){
     if(!window.confirm('Delete this conversation permanently?'))return;
+    if(activeId===id)stopSpeaking();
     if(workRef.current?.id===id) workRef.current.controller.abort();
     const doomed=chats.find(c=>c.id===id);
     // Avoid orphaning generated WebP blobs after the user deletes a chat.
+    const stillUsed=new Set(chats.filter(c=>c.id!==id).flatMap(c=>
+      (c.messages||[]).map(m=>m.imageResult?.storageId).filter(Boolean)));
     (doomed?.messages||[]).forEach(m=>{
-      if(m.imageResult?.storageId)deleteHordeImage(m.imageResult.storageId).catch(()=>{});
+      if(m.imageResult?.storageId&&!stillUsed.has(m.imageResult.storageId))
+        deleteHordeImage(m.imageResult.storageId).catch(()=>{});
     });
     const next=chats.filter(c=>c.id!==id);
     if(next.length) {setChats(next);if(activeId===id)setActiveId(next[0].id);}
@@ -3734,6 +3780,10 @@ function App() {
           </div> : <div className="space-y-6">{active.messages.map(m=><Message key={m.id} message={m}
               streaming={busy===active.id&&m.role==='assistant'&&m.status==='streaming'}
               onContinue={continueResponse}
+              onRetry={retryResponse}
+              canRetry={!busy&&!reading&&m.role==='assistant'&&m.status!=='streaming'}
+              onSpeak={speakResponse}
+              isSpeaking={speakingMessageId===m.id&&active.id===activeId}
                onApproveImage={approveModelImage}
                canApproveImage={!busy&&!reading&&!!m.imageConsentRequest}
               canContinue={!busy&&!reading&&m.role==='assistant'&&
