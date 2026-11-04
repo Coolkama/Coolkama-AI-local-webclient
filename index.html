@@ -345,7 +345,7 @@
 <div id="root"></div>
 <script type="text/babel">
 const {useState, useEffect, useLayoutEffect, useRef, useMemo} = React;
-const APP_BUILD = '2026-11-04-mermaid-diagrams-v13';
+const APP_BUILD = '2026-11-04-mermaid-loader-fix-v14';
 const STORAGE_KEY = 'llm-workbench-v1';
 const USAGE_KEY = 'llm-workbench-free-only-usage-v1';
 // These are deliberately conservative CLIENT-ONLY stops, NOT the providers' real quotas.
@@ -1017,12 +1017,19 @@ function toolDiagramRequest(call){
 }
 // Mermaid is fetched lazily only when the user creates or opens a diagram.
 // Rendering happens inside this browser: no diagram content is sent to a remote renderer.
-const MERMAID_MODULE_URL='https://cdn.jsdelivr.net/npm/mermaid@12/dist/mermaid.esm.min.mjs';
+// Babel's text/babel preset can rewrite import() to CommonJS require(),
+// which does not exist on this static page. The native import expression is
+// deliberately inside a string so Babel cannot transform it.
+const MERMAID_MODULE_URL='https://cdn.jsdelivr.net/npm/mermaid@12.2.0/dist/mermaid.esm.min.mjs';
+const importMermaidNative=new Function('url','return import(url)');
 let mermaidEnginePromise=null;
+const mermaidSvgCache=new Map();
 async function getMermaidEngine(){
   if(!mermaidEnginePromise){
-    mermaidEnginePromise=import(MERMAID_MODULE_URL).then(module=>{
+    mermaidEnginePromise=importMermaidNative(MERMAID_MODULE_URL).then(module=>{
       const engine=module.default||module;
+      if(typeof engine.initialize!=='function'||typeof engine.parse!=='function'||typeof engine.render!=='function')
+        throw new Error('Mermaid API is missing required functions.');
       engine.initialize({
         startOnLoad:false,securityLevel:'strict',theme:'dark',
         htmlLabels:false,flowchart:{htmlLabels:false,useMaxWidth:true},
@@ -1031,7 +1038,10 @@ async function getMermaidEngine(){
       return engine;
     }).catch(error=>{
       mermaidEnginePromise=null;
-      throw new Error('Mermaid library could not load. Check your connection: '+String(error.message||error));
+      const failure=new Error('Mermaid module failed to load in this browser: '+String(error.message||error));
+      failure.name='MermaidLoadError';
+      diagLog('normal','mermaid-module-load-failed',{message:failure.message});
+      throw failure;
     });
   }
   return mermaidEnginePromise;
@@ -1039,8 +1049,12 @@ async function getMermaidEngine(){
 async function validateMermaidInBrowser(code){
   const engine=await getMermaidEngine();
   await engine.parse(code,{suppressErrors:false});
+  // Validate actual rendering as well, not merely valid syntax.
+  // The sanitized SVG is cached for the chat preview.
+  await renderMermaidSvg(code);
 }
 async function renderMermaidSvg(code){
+  if(mermaidSvgCache.has(code))return mermaidSvgCache.get(code);
   const engine=await getMermaidEngine();
   const id='tightArseDiagram'+uid().replace(/[^a-z0-9]/gi,'');
   const {svg}=await engine.render(id,code);
@@ -1051,6 +1065,8 @@ async function renderMermaidSvg(code){
     FORBID_ATTR:['href','xlink:href','onload','onclick','onerror']});
   if(typeof clean!=='string'||!/<svg\b/i.test(clean))
     throw new Error('Mermaid returned no safe SVG output.');
+  if(mermaidSvgCache.size>=8)mermaidSvgCache.delete(mermaidSvgCache.keys().next().value);
+  mermaidSvgCache.set(code,clean);
   return clean;
 }
 function downloadLocalBlob(blob,name){
