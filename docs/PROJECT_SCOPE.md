@@ -53,6 +53,17 @@ When adding file features, prefer the browser File API for explicit selection an
 - Ollama may be used as a local inference endpoint where browser connectivity is supported.
 - Offline/mock test mode should remain available.
 
+## Free image generation extension (agreed 4 November 2026)
+
+The browser client may directly call **AI Horde** to generate images from the user's explicitly submitted text prompt. The first release uses an optional **image mode** controlled by a composer button, separate from the selected chat model and Tavily search. No paid image API, paid fallback, backend service or server-hosted model is permitted.
+
+- Anonymous AI Horde generation with the documented public key `0000000000` should work without account registration. Users may optionally supply their own personal Horde key. Never hard-code a non-public key.
+- Image generation is **opt-in on each composer mode**, never inferred merely because a prompt mentions an image. Acknowledgement is required before the first remote submission. The client must disclose volunteer worker access and AI Horde's anonymous-sharing override, which can cause images to be shared with LAION despite `shared:false`.
+- A generation request creates one persistent chat turn and uses the asynchronous image API: submit, lightweight periodic status check, retrieve finished image, and best-effort cancel on Stop or failure. Keep the UI informative while queued.
+- Use conservative separate request limits. Polling does not consume a new generation quota. Never purchase priority credits or upgrade a paid tier, and never switch the selected text model.
+- Display generated images inside the chat and offer ordinary browser-controlled downloads; image generation does not grant permission to modify existing files. Document temporary remote URLs and CORS limitations.
+- Browser-side, purely local WebGPU diffusion is a *possible future* second provider, not a requirement of this first AI Horde implementation. Avoid bundling multi-gigabyte models into `index.html`.
+
 ## Streaming chat interface
 
 - Render model-driven web searches and sources **above** the answer, in a single default-collapsed details panel. The header reads "Searching web..." while a web tool executes, then "Searched web" when it finishes. The panel can be expanded to inspect actual queries and source links. Do not show the panel for Web-enabled answers that did not use search.
