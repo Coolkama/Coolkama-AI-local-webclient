@@ -4,6 +4,18 @@ A standalone, mobile-first, free-tier-first LLM chat and web-search client built
 
 > **Project requirements:** [Scope and guardrails](docs/PROJECT_SCOPE.md). Read these before making changes.
 
+## AI Horde image generation (v10)
+
+Click the **image icon** beside the globe in the chat composer to switch between ordinary text chat and **AI Horde text-to-image** generation. Enter a prompt and press Generate. Text models, web search and the user's existing provider selection are not involved in image requests. The app submits exactly **one** job to the official AI Horde endpoint and shows the queue position, approximate wait and generating state in the same assistant chat bubble. On completion it displays the image with **Download image** and **Open original** actions. Browser CORS may block a direct cross-origin download; use Open original and the browser's Save image option in that case. Remote image links can expire, so users should download images they want to keep.
+
+**Anonymous by default:** No registration, key or payment is required. The public key `0000000000` is used when the optional personal AI Horde key is blank. Settings includes a personal-key field and 512×512 / 768×768 resolution selector. One image, 20 steps per request. AI Horde selects an available compatible model/volunteer worker; the user may get variable output quality and long waits. **No image editing or uploaded-image input** in the first release. Attachments must be sent through text chat instead. No paid models, credit purchases, automatic rerouting or paid fallbacks are introduced.
+
+**Consent and privacy:** Image mode requires explicit acknowledgement. Prompts go to volunteer-run third-party workers; AI Horde's own API specification says anonymous image generations are **always shared with LAION**, even if the client sets `shared:false`. The request sets `nsfw:false`, `censor_nsfw:true`, `r2:true`, `shared:false`, with the anonymous-service override clearly disclosed. Do not submit confidential prompts. Images may be worker-generated and vary in safety/quality.
+
+**Free-only safeguards:** A separate local browser limit of **2 image submissions/minute and 20/day** applies; polls are not counted. The image request is made directly from the browser via `POST /api/v2/generate/async`, checks `GET /api/v2/generate/check/{id}` every 3 seconds, and gets the result only once via `GET /api/v2/generate/status/{id}`. A ten-minute queue timeout applies. Stop aborts requests and attempts `DELETE /api/v2/generate/status/{id}` when an ID was assigned. Pending generation cannot survive closing/suspending the browser tab. Free Kudos are queue-priority credits, not currency.
+
+**Browser limits:** The API and image storage endpoints must permit cross-origin browser requests (CORS) for this static GitHub Pages site; a live browser request has not yet been independently verified with the selected environment. For returned Cloudflare R2 HTTPS image links, the client stores the link in the browser's chat history and displays a download action, but cannot guarantee that the remote URL stays live. An inline base64 response may consume substantial browser localStorage quota. The optional personal key is stored in browser localStorage, like the other provider keys, and is not encrypted.
+
 ## What it does
 
 - Multiple saved chats, streamed model responses, Markdown/code highlighting and code snippet downloads.
@@ -62,7 +74,7 @@ Local simulated timing tests cover ready at 0 s, 1 s, 6.5 s, and never ready; th
 
 For static hosting, select **Settings → Pages → Deploy from a branch → main → /(root)**. The root-level `.nojekyll` file disables Jekyll processing; this repository needs no application build step. If the public site is not published yet, review the Pages publishing status and GitHub's deployment messages. The expected URL is https://coolkama.github.io/Coolkama-AI-local-webclient/ (only after successful publication).
 
-**Confirm that the latest version was actually published:** The bottom of the left-hand chat sidebar displays `Build: 2026-11-04-matrix-chat-v9`. If the label is missing, the browser is running an older `index.html`, or GitHub Pages has not updated. Open the Pages website with a fresh query string, e.g. `?version=20261103-provider-adapters-v2`, and reload. Query strings can bypass stale browser HTML caches but cannot publish an unbuilt deployment. The GitHub commit on `main` is not proof of a live Pages deployment; inspect **Settings → Pages** for the published source and status. No GitHub Actions or paid hosting infrastructure are enabled by this repository.
+**Confirm that the latest version was actually published:** The bottom of the left-hand chat sidebar displays `Build: 2026-11-04-horde-images-v10`. If the label is missing, the browser is running an older `index.html`, or GitHub Pages has not updated. Open the Pages website with a fresh query string, e.g. `?version=20261103-provider-adapters-v2`, and reload. Query strings can bypass stale browser HTML caches but cannot publish an unbuilt deployment. The GitHub commit on `main` is not proof of a live Pages deployment; inspect **Settings → Pages** for the published source and status. No GitHub Actions or paid hosting infrastructure are enabled by this repository.
 
 ## Gemini model discovery (native API)
 
