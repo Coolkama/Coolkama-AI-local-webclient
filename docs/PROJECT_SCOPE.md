@@ -73,6 +73,14 @@ The browser client may directly call **AI Horde** to generate images from the us
 - Image jobs cannot continue across page closure/reload; previously pending jobs are marked interrupted after reopening. Never invent a generated image URL or claim success before Horde completes. An unavailable/unsupported model tool capability must not trigger a paid provider.
 - The same optional AI Horde key, volunteer-worker disclosure, anonymous LAION sharing caveat and browser-only download boundaries remain unchanged.
 
+## Diagram background styling (4 November 2026)
+
+- Default Mermaid diagrams to a white canvas and legible light theme in chat, **without** changing the app's Matrix-green styling.
+- Accept optional, strictly validated `background` and `theme` fields in the `create_diagram` schema. The LLM may honour user changes to canvas colour and theme independently of node-specific Mermaid styles.
+- Apply the chosen background to the exported SVG content, browser preview and PNG rasterisation. `transparent` must remain transparent in the downloaded images.
+- Persist and reuse background/theme alongside Mermaid code for follow-up edits. Diagrams created before this feature default to white on display.
+- Mermaid's theme configuration is global; serialise rendering for distinct themes and distinguish cached renders by code, background and theme. Preserve strict security/sanitisation, free-only browser architecture and existing image downloads.
+
 ## Diagram loader failure recovery and self-test (4 November 2026)
 
 - The `text/babel` script must use genuine browser-native ESM import for Mermaid, avoiding Babel transpilation to CommonJS `require`. Keep the Mermaid module version fixed to a tested 12.x release and preserve lazy loading.
