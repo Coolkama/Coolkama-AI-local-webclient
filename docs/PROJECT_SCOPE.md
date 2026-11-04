@@ -73,6 +73,14 @@ The browser client may directly call **AI Horde** to generate images from the us
 - Image jobs cannot continue across page closure/reload; previously pending jobs are marked interrupted after reopening. Never invent a generated image URL or claim success before Horde completes. An unavailable/unsupported model tool capability must not trigger a paid provider.
 - The same optional AI Horde key, volunteer-worker disclosure, anonymous LAION sharing caveat and browser-only download boundaries remain unchanged.
 
+## Model-controlled local Mermaid diagrams (4 November 2026)
+
+- Offer `create_diagram` as a browser-owned tool even with Web search disabled, alongside `generate_image`. The LLM chooses diagrams for explicit requests involving architecture, flowcharts, sequence/class/entity diagrams, timelines and other technical diagrams. Use AI Horde only for requested artistic/raster image generation.
+- The model supplies Mermaid source plus an optional display title; validate a bounded, narrowly supported schema. Reject configuration overrides, click/link directives and script-like instructions, and use Mermaid's strict security level without HTML labels. Model tool errors should be returned for one or two revisions before ending the turn.
+- Lazy-load Mermaid from a public CDN when needed, and render diagrams **within the user's browser**, not through external rendering servers. SVG output must be sanitised and displayed in an inert image context rather than injecting unsanitised markup into the application DOM. The CDN is a library dependency, not a diagram service.
+- Display diagrams inside the relevant assistant reply, with local SVG, PNG and editable Mermaid source downloads. Keep the diagram source in browser-local chat history for follow-up revisions; do not persist large SVG output or introduce file-editing permission.
+- Cap at one accepted diagram per user turn and three validation attempts. Preserve existing free inference quotas, provider adapters, image-generation privacy settings, browser-only architecture, ordinary downloads and disabled GitHub Actions.
+
 ## Browser-owned generated-image downloads (4 November 2026)
 
 - Retain the existing working **Open original** link for previously generated images. Browser navigation to remote AI Horde R2 images is permitted, but a JavaScript cross-origin `fetch` can fail with CORS even if that navigation succeeds.
