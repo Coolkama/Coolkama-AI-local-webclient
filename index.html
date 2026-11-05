@@ -2512,7 +2512,7 @@ function Message({message,streaming,onContinue,canContinue=false,onApproveImage,
         {(message.attachments||[]).length>0&&<div className="flex flex-wrap gap-2 mt-2">{message.attachments.map(a=>a.type==='image'?<div key={a.id} className="relative"><img src={a.dataUrl} alt={a.name} title={a.name} className="w-24 h-24 md:w-32 md:h-32 object-cover rounded-xl border border-slate-600"/></div>:<div key={a.id} title={a.name} className="max-w-full flex items-center gap-1.5 text-xs text-slate-300 bg-slate-800 border border-slate-700 px-2.5 py-2 rounded-lg"><Icon name="file" size={15}/><span className="truncate max-w-44">{a.name}</span>{a.truncated&&<span className="text-amber-400">(partial)</span>}</div>)}</div>}
         {message.status==='error'&&<div className="mt-2 text-xs text-rose-400 break-words">{message.error||'Request failed'}</div>}
         {message.status==='stopped'&&<div className="mt-2 text-xs text-amber-400">Generation stopped</div>}
-        {message.status==='incomplete'&&<div className="mt-2 text-xs text-amber-400">{message.incompleteReason==='output_limit'?'The response reached the output-token limit. You can continue writing into this same answer.':message.incompleteReason==='unfinished_code'?'The response ended with an unclosed code block. Continue to finish it.':message.incompleteReason==='invalid_code'?'Generated HTML/JavaScript did not pass a syntax check. The code may not run.':message.incompleteReason==='continuation_misaligned'?'Continuation did not join reliably; generation stopped to avoid corrupting the answer.':'Incomplete answer · retrieved sources preserved above'}</div>}
+        {message.status==='incomplete'&&<div className="mt-2 text-xs text-amber-400">{message.incompleteReason==='output_limit'?'The response reached the output-token limit. You can continue writing into this same answer.':message.incompleteReason==='unfinished_code'?'The response ended with an unclosed code block. Continue to finish it.':message.incompleteReason==='invalid_code'?'Generated HTML/JavaScript did not pass a syntax check. The code may not run.':message.incompleteReason==='continuation_misaligned'?'Continuation did not join reliably; generation stopped to avoid corrupting the answer.':message.incompleteReason==='provider_rate_limit'?'Groq free-token limit reached · existing search sources preserved above. You can retry later.':'Incomplete answer · retrieved sources preserved above'}</div>}
         {legacyOpenCode&&<div className="mt-2 text-xs text-amber-400">This older reply has an unfinished code fence. You can continue it in place.</div>}
         {!user&&message.contextWindow&&!!(message.contextWindow.droppedMessages||message.contextWindow.shortenedMessages)&&
           <p className="mt-3 text-[11px] text-slate-500">
@@ -3785,7 +3785,17 @@ function App() {
     } catch(e) {
       const stopped=e.name==='AbortError';
       diagLog('normal',stopped?'turn-aborted':'turn-error',{message:stopped?'User cancelled':(e.message||String(e)),type:e.name||'Error'},diagCtx);
-      patchAssistant({content:output,status:stopped?'stopped':'error',searchStatus:null,searchingWeb:false,reasoningProgress:null,error:stopped?'':(e.message||String(e))});
+      if(!stopped&&provider==='groq'&&isGroqRateLimit(e)&&allSources.length&&!output.trim()){
+        // The model may have exhausted its free token budget after collecting
+        // legitimate evidence. Preserve those links instead of an empty reply.
+        output=sourceOnlyAnswer(allSources,
+          'Groq hit its free token-per-minute limit before it could complete a summary. The source links below remain available; retry once the provider limit refreshes.');
+        patchAssistant({content:output,status:'incomplete',incompleteReason:'provider_rate_limit',
+          searchStatus:null,searchingWeb:false,reasoningProgress:null,error:null});
+        diagLog('normal','groq-evidence-preserved-after-rate-limit',{sourceCount:allSources.length},diagCtx);
+      }else{
+        patchAssistant({content:output,status:stopped?'stopped':'error',searchStatus:null,searchingWeb:false,reasoningProgress:null,error:stopped?'':(e.message||String(e))});
+      }
       if(!stopped&&e instanceof TypeError)setNotice('Network/CORS error. Check provider URL, CORS policy and browser console.');
     } finally {
        // Stop stays connected to AI Horde while it runs after the model finishes.
