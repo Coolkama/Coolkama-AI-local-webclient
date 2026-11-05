@@ -4,6 +4,12 @@ A standalone, mobile-first, free-tier-first LLM chat and web-search client built
 
 > **Project requirements:** [Scope and guardrails](docs/PROJECT_SCOPE.md). Read these before making changes.
 
+## Sidebar branding matches the splash screen (build v20)
+
+The conversation drawer now replaces its temporary star-in-a-box icon with **the exact grumpy green robot SVG already used by the splash screen**. A standalone data URL is captured from the existing inline mascot at startup, before the temporary splash DOM is removed, so the sidebar reuses the same artwork without a second copy, extra download, new file, or external image dependency.
+
+The sidebar retains **Tight Arse AI** as the product name and replaces the placeholder `CHAT CLIENT` caption with the original splash-screen subtitle: **“Maximum intelligence · Minimum spend”**. The sidebar subtitle wraps when needed on narrow phones. The original splash SVG, text, animation and four-second minimum display time remain unchanged.
+
 ## Groq 413 oversized-input and mobile table fixes (build v19)
 
 On 5 November 2026, an Android Chrome screenshot showed Groq returning **HTTP 413** (*request too large for model*) with an observed **8,000 token-per-minute ceiling** and **8,268 requested tokens**. Our earlier rolling context targeted **8,192 estimated input tokens**, leaving almost no margin for provider tokenisation differences, system/tool overhead and other free-tier limits. This is different from transient Groq HTTP **429** rate limiting; simply waiting cannot solve an individual oversized request.
