@@ -4,6 +4,19 @@ A standalone, mobile-first, free-tier-first LLM chat and web-search client built
 
 > **Project requirements:** [Scope and guardrails](docs/PROJECT_SCOPE.md). Read these before making changes.
 
+## Settings redesigned for mobile (build v22)
+
+Settings now opens on a **small, focused home screen** instead of immediately displaying every control in one long scroll. It shows the currently selected provider and model, simple configuration states for Web search and AI Horde images, and direct entries to **AI provider**, **Web search**, **Image generation**, **Advanced settings**, **Usage & safety**, and **Diagnostics**. Subpages have a clear Back button and the usual Done/close control. Navigation is local UI state; configuration changes still use the existing autosaved settings store.
+
+- **AI provider:** Retains all five provider choices, API-key entry, required free-tier declaration, model picker/discovery, local Ollama endpoint support, and model discovery failures. Locked hosted-provider URLs live under *Connection details*; provider instructions and model filtering explanations are collapsible.
+- **Web search:** Retains the on/off default, Tavily Researcher key and mandatory free-plan declaration, source/search budgets and local quota counter. Extensive search/privacy/technical guidance is collapsible; a short warning about submitted search queries remains visible.
+- **Image generation:** Retains AI Horde anonymous/personal-key support, output size, explicit third-party privacy/LAION acknowledgement, and local usage counter.
+- **Advanced settings:** Retains the selected provider's rolling-context size, Groq experimental prefill, output token limits, seamless continuation, temperature and system instruction.
+- **Usage & safety:** Displays the complete zero-charges limitation and billing warning, official free-plan information, local quota counters and browser-storage privacy notice. The compact home screen links to these details without repeating the full warning in every Settings visit.
+- **Diagnostics:** Opens directly from Settings home, keeping its existing logs and self-test controls.
+
+No model endpoints, search requests, safety gates, storage formats, API keys, account confirmations, default values, provider selection rules, download behaviour or free-only restrictions were intentionally changed. The splash screen and conversation interface remain unchanged. The Settings redesign is limited to presentation and navigation; live Android Chrome visual/regression checks remain necessary.
+
 ## Inline generated visuals, without attachment-style cards (build v21)
 
 Generated Mermaid diagrams and AI Horde images now appear **within the assistant's Markdown answer**, instead of being unconditionally appended after the answer text. Once a visual tool succeeds, the LLM is instructed to put an unambiguous standalone `[[diagram]]` or `[[image]]` placement marker at its intended location in its final response. The browser replaces that marker with the actual rendered visual; the marker is not displayed, copied or spoken. It is ignored if the matching media does not exist, and duplicates are suppressed. Markers inside fenced code are not treated as layout instructions.
