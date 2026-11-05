@@ -2321,8 +2321,10 @@ function hordeSamplingForModel(name,reference,preferences={}){
   if(Number.isFinite(preferences.cfg_scale)&&preferences.cfg_scale>=0){
     const suggested=typeof requirements.cfg_scale==='number'&&Number.isFinite(requirements.cfg_scale)
       ?requirements.cfg_scale:cfgScale;
-    const tolerance=family==='flux'||family==='fast'?0.5:2;
-    cfgScale=Math.max(suggested-tolerance,Math.min(suggested+tolerance,preferences.cfg_scale));
+    // Distilled/fast checkpoints often require CFG 1. Never let a chat model
+    // overpower that by requesting a generic diffusion CFG such as 7.5.
+    if(family==='flux'||family==='fast')cfgScale=suggested;
+    else cfgScale=Math.max(suggested-2,Math.min(suggested+2,preferences.cfg_scale));
   }
   steps=Math.max(1,Math.min(family==='flux'||family==='fast'?10:40,Math.round(steps)));
   cfgScale=Math.max(0,Math.min(15,Number(cfgScale.toFixed(2))));
