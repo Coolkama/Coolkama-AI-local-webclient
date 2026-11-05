@@ -2326,7 +2326,8 @@ function Icon({name,size=19,className=''}) {
     layers:<><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></>,
     copy:<><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></>,
     volume:<><path d="M11 5 6 9H3v6h3l5 4V5ZM15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12"/></>,
-    retry:<><path d="M3 10a9 9 0 1 1 1.6 7M3 3v7h7"/></>
+    retry:<><path d="M3 10a9 9 0 1 1 1.6 7M3 3v7h7"/></>,
+    dots:<><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></>
   };
   return <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]||paths.spark}</svg>;
 }
@@ -2389,9 +2390,21 @@ function inlineReplyParts(content,mediaTypes=[]){
   }
   return parts.filter(part=>part.type!=='text'||part.text.trim());
 }
+function MediaOptions({label,children}){
+  return <details className="absolute right-2 top-2 z-20 group">
+    <summary aria-label={label} title={label}
+      className="list-none cursor-pointer grid place-items-center w-9 h-9 rounded-lg border border-slate-300/70 bg-white/95 text-slate-700 shadow-sm hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-lime-500"
+      style={{listStyle:'none'}}><Icon name="dots" size={18}/></summary>
+    <div className="absolute right-0 top-10 w-44 max-w-[70vw] py-1 rounded-xl border border-emerald-700/70 bg-[#06190f] text-emerald-100 shadow-xl shadow-black/50">
+      {children}
+    </div>
+  </details>;
+}
+const MEDIA_MENU_ITEM='flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-emerald-100 hover:bg-emerald-900/60 focus-visible:bg-emerald-900/60';
 function DiagramPreview({diagram}){
   const [rendered,setRendered]=useState({svg:null,url:null,loading:true,error:null});
   const [exportError,setExportError]=useState('');
+  const [showSource,setShowSource]=useState(false);
   useEffect(()=>{
     let active=true,url=null;
     setExportError('');
@@ -2412,44 +2425,87 @@ function DiagramPreview({diagram}){
   },[diagram.code,diagram.background,diagram.theme,diagram.renderError]);
   const source=String(diagram.code||'');
   const title=String(diagram.title||'Diagram');
-  return <div className="mt-3 rounded-xl border border-emerald-700/70 bg-emerald-950/30 overflow-hidden">
-    <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-emerald-800/60">
-      <p className="text-xs font-semibold text-lime-200 flex gap-2 items-center">
-        <Icon name="layers" size={16}/> {title}
-      </p>
-      <span className="text-[10px] text-emerald-300">Mermaid · {diagram.background||'white'} background</span>
-    </div>
-    <div className="p-3">
-      {rendered.loading&&<p className="text-xs text-lime-200" role="status">Rendering diagram in this browser…</p>}
-      {rendered.error&&<p className="text-xs text-amber-200 break-words" role="alert">
-        Diagram rendering failed: {rendered.error}. You can still download the Mermaid source.
+  return <figure className="my-3 min-w-0 max-w-full" aria-label={title}>
+    <div className="relative min-w-0">
+      {rendered.loading&&<p className="text-xs text-lime-200 py-3" role="status">Rendering diagram…</p>}
+      {rendered.error&&<p className="text-xs text-amber-200 break-words py-2" role="alert">
+        Diagram could not render: {rendered.error}. The editable source is still available in options.
       </p>}
       {rendered.url&&<a href={rendered.url} target="_blank" rel="noopener noreferrer"
-        title="Open full-size SVG diagram" className="block border border-emerald-800/50 rounded-lg overflow-auto"
+        title="Tap to open the full-size diagram" aria-label={'Open full-size diagram: '+title}
+        className="block max-w-full rounded-lg overflow-x-auto ring-1 ring-slate-500/25"
         style={{background:diagram.background||'white'}}>
         <img src={rendered.url} alt={title} loading="lazy" className="block w-full h-auto max-h-[65vh] object-contain"/>
       </a>}
-      <div className="flex flex-wrap gap-2 mt-3">
-        {rendered.url&&<a className="btn btn-primary" href={rendered.url}
-          download={diagramFileName(title,'svg')}><Icon name="download" size={15}/> SVG</a>}
-        {rendered.url&&<button type="button" className="btn btn-soft border border-emerald-700/70"
+      <MediaOptions label="Diagram options">
+        {rendered.url&&<a className={MEDIA_MENU_ITEM} href={rendered.url}
+          target="_blank" rel="noopener noreferrer"><Icon name="eye" size={15}/> View full size</a>}
+        {rendered.url&&<a className={MEDIA_MENU_ITEM} href={rendered.url}
+          download={diagramFileName(title,'svg')}><Icon name="download" size={15}/> Download SVG</a>}
+        {rendered.url&&<button type="button" className={MEDIA_MENU_ITEM}
           onClick={async()=>{
             setExportError('');
             try{await saveMermaidPng(rendered.svg,rendered.url,title,diagram.background||'white');}
             catch(error){setExportError(String(error.message||error));}
-          }}><Icon name="download" size={15}/> PNG</button>}
-        <button type="button" className="btn btn-soft border border-emerald-700/70"
+          }}><Icon name="download" size={15}/> Download PNG</button>}
+        <button type="button" className={MEDIA_MENU_ITEM}
           onClick={()=>downloadLocalBlob(new Blob([source],{type:'text/plain;charset=utf-8'}),
-            diagramFileName(title,'mmd'))}><Icon name="download" size={15}/> Source</button>
-      </div>
-      {exportError&&<p className="text-xs text-amber-200 mt-2" role="alert">{exportError}</p>}
-      <details className="mt-3 border-t border-emerald-800/40 pt-2">
-        <summary className="cursor-pointer text-xs text-emerald-200">View editable Mermaid source</summary>
-        <pre className="mt-2 text-[11px] text-slate-300 whitespace-pre overflow-auto max-h-72 p-2 rounded-lg bg-slate-950/60">{source}</pre>
-      </details>
-      <p className="mt-2 text-[10px] text-slate-400">Editable source is saved in this conversation. Ask the AI to modify the diagram in your next message.</p>
+            diagramFileName(title,'mmd'))}><Icon name="download" size={15}/> Mermaid source</button>
+        <button type="button" className={MEDIA_MENU_ITEM}
+          onClick={()=>setShowSource(value=>!value)}><Icon name="file" size={15}/>{showSource?'Hide source':'View source'}</button>
+      </MediaOptions>
     </div>
+    {exportError&&<p className="text-xs text-amber-200 mt-2" role="alert">{exportError}</p>}
+    {showSource&&<pre className="mt-2 text-[11px] text-emerald-100 whitespace-pre overflow-auto max-h-72 p-2 rounded-lg bg-slate-950/70">{source}</pre>}
+  </figure>;
+}
+function GeneratedImageSlot({message,imageAsset,onApproveImage,canApproveImage=false}){
+  const result=message.imageResult;
+  if(result)return <figure className="my-3 min-w-0 max-w-full">
+    <div className="relative min-w-0">
+      {imageAsset.src?<a href={imageAsset.src} target="_blank" rel="noopener noreferrer"
+        className="block max-w-full" title="Tap to view full generated image">
+        <img src={imageAsset.src} alt="Image generated by AI Horde" loading="lazy"
+          referrerPolicy="no-referrer" className="block w-full max-w-lg h-auto rounded-lg"/>
+      </a>:<p className="text-xs text-amber-200 py-3">{imageAsset.error||'Loading generated image from browser storage…'}</p>}
+      <MediaOptions label="Generated image options">
+        {typeof result.url==='string'&&result.url.startsWith('https://')
+          ?<a className={MEDIA_MENU_ITEM} href={result.url} target="_blank" rel="noopener noreferrer">
+            <Icon name="download" size={15}/> Open to save
+          </a>
+          :imageAsset.src?<a className={MEDIA_MENU_ITEM} href={imageAsset.src}
+            download={'tight-arse-ai-'+String(result.requestId||'image').slice(0,40)+'.webp'}>
+            <Icon name="download" size={15}/> Download image
+          </a>:null}
+        {imageAsset.src&&<a className={MEDIA_MENU_ITEM} href={imageAsset.src}
+          target="_blank" rel="noopener noreferrer"><Icon name="eye" size={15}/> Open original</a>}
+        <p className="px-3 py-2 text-[10px] text-emerald-300 border-t border-emerald-700/40">
+          AI Horde · {result.model} · {result.size} × {result.size}
+        </p>
+      </MediaOptions>
+    </div>
+    {result.storageWarning&&<p className="text-[11px] text-amber-200 mt-2">{result.storageWarning}</p>}
+  </figure>;
+  if(message.imageConsentRequest)return <div className="my-3 rounded-lg border border-amber-600/60 bg-amber-950/20 p-3 space-y-2 text-xs text-amber-100">
+    <p className="font-semibold flex items-center gap-2"><Icon name="image" size={16}/> AI Horde image needs your consent</p>
+    <p>Image prompts go to volunteer-run workers. Anonymous generations may be shared with LAION, even when sharing is disabled in the request. Do not submit confidential prompts.</p>
+    <p className="text-slate-300 break-words">Prompt: {message.imageConsentRequest.prompt}</p>
+    <button className="btn btn-primary" type="button" disabled={!canApproveImage}
+      onClick={()=>onApproveImage?.(message.id)}>I understand · Generate this image</button>
+    {!canApproveImage&&<p className="text-slate-400">Available when the current reply finishes.</p>}
   </div>;
+  if(message.imageError)return <p className="my-3 text-xs text-rose-300">AI Horde · {message.imageError}</p>;
+  if(message.imagePending||(message.imageProvider==='horde'&&message.status==='streaming'))
+    return <div role="status" aria-live="polite"
+      className="my-3 rounded-lg border border-lime-700/50 bg-emerald-950/20 p-3 text-xs text-lime-100">
+      <p className="flex items-center gap-2 font-semibold"><Icon name="image" size={17}/>
+        AI Horde · {message.imageStatus||(message.imageProgress?.working?'Generating image…':'Waiting for a volunteer worker…')}
+      </p>
+      {message.imageProgress?.queue!=null&&<p className="mt-2">Queue position: {message.imageProgress.queue}</p>}
+      {message.imageProgress?.seconds!=null&&<p>Estimated wait: {message.imageProgress.seconds}s (approximate)</p>}
+      <p className="mt-1 text-slate-400">Keep the page open. Stop attempts to cancel the queued job.</p>
+    </div>;
+  return null;
 }
 // Keep clipboard content useful for both ordinary answers and diagram replies.
 function replyCopyText(message){
