@@ -3055,10 +3055,25 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
         {settingsPage==='provider'&&<div className="space-y-4">
           <p className="text-xs text-slate-400 leading-5">Choose your AI provider and model. Your API key and free-tier declaration are saved locally.</p>
         <div><label className="block text-xs font-semibold text-slate-300 mb-2">Provider</label><div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{Object.entries(PROVIDERS).map(([id,p])=><button key={id} onClick={()=>{patch({provider:id});setModelError('');}} className={`text-left px-3 py-2.5 rounded-xl border text-sm ${provider===id?'bg-lime-600/20 border-lime-500 text-lime-100':'bg-slate-900 border-slate-700 text-slate-300'}`}>{p.name}</button>)}</div></div>
-        <div className="rounded-xl p-3 bg-slate-900 border border-slate-800 text-xs leading-5 text-slate-400">{info.help} {info.keyUrl&&<a className="inline-flex items-center gap-1 text-lime-300 underline" href={info.keyUrl} rel="noopener noreferrer" target="_blank">{provider==='ollama'?'Get Ollama':'Get an API key'} <Icon name="arrow" size={12}/></a>}</div>
+        <details className="rounded-xl border border-slate-700/80 bg-slate-900/50 text-xs">
+          <summary className="cursor-pointer px-3 py-2.5 font-semibold text-lime-200">Provider setup help &amp; official links</summary>
+          <div className="px-3 pb-3 leading-5 text-slate-300">{info.help}
+            {info.keyUrl&&<a className="ml-1 inline-flex items-center gap-1 text-lime-300 underline" href={info.keyUrl} rel="noopener noreferrer" target="_blank">{provider==='ollama'?'Get Ollama':'Get an API key'} <Icon name="arrow" size={12}/></a>}
+          </div>
+        </details>
         {provider!=='demo'&&<>
           {provider!=='ollama'&&<div><label className="block text-xs font-semibold text-slate-300 mb-2">API key (FREE-tier account only)</label><div className="relative"><input className="field pr-12" type={showKey?'text':'password'} placeholder="Paste your FREE-tier API key" autoComplete="off" value={profile.key} onChange={e=>onChange(s=>({...s,profiles:{...s.profiles,[s.provider]:{...s.profiles[s.provider],key:e.target.value}},freeTierConfirmed:{...s.freeTierConfirmed,[s.provider]:false}}))}/><button className="absolute right-3 top-2.5 text-slate-400" onClick={()=>setShowKey(!showKey)} aria-label="Show or hide API key"><Icon name={showKey?'eyeoff':'eye'}/></button></div></div>}
-          <div><label className="block text-xs font-semibold text-slate-300 mb-2">Base URL {provider==='ollama'?'(private LAN or localhost only)':'(official, locked)'}</label><input className="field font-mono text-xs" spellCheck="false" value={profile.url} readOnly={provider!=='ollama'} onChange={e=>provider==='ollama'&&patchProfile({url:e.target.value})}/></div>
+          {provider==='ollama'
+            ?<div><label className="block text-xs font-semibold text-slate-300 mb-2">Ollama endpoint (private LAN or localhost only)</label>
+              <input className="field font-mono text-xs" spellCheck="false" value={profile.url}
+                onChange={e=>patchProfile({url:e.target.value})}/></div>
+            :<details className="rounded-lg border border-slate-800/80 bg-slate-900/30 text-xs">
+              <summary className="cursor-pointer px-3 py-2 text-slate-400">Connection details · official URL locked</summary>
+              <div className="px-3 pb-3">
+                <label className="block font-semibold text-slate-300 mb-2">Base URL (official, locked)</label>
+                <input className="field font-mono text-xs" spellCheck="false" value={profile.url} readOnly/>
+              </div>
+            </details>}
           {provider!=='ollama'&&<label className="flex gap-2 items-start rounded-xl border border-amber-700/60 bg-amber-950/20 p-3 text-xs leading-5 text-amber-100"><input className="mt-1 h-4 w-4 accent-emerald-500 shrink-0" type="checkbox" checked={confirmed} onChange={e=>updateConfirmation(e.target.checked)}/><span><strong>Required before API requests:</strong> I have checked that this API key uses the provider's genuine FREE tier, with NO billing-enabled project, Developer/pay-as-you-go plan or auto-recharge. I understand the app cannot independently verify account billing.</span></label>}
         </>}
         <div><div className="flex justify-between items-center mb-2"><label className="text-xs font-semibold text-slate-300">Free models only</label>{provider!=='demo'&&<button className="text-xs text-lime-300 disabled:opacity-50" disabled={loadingModels} onClick={loadModels}>{loadingModels?'Loading…':'Discover FREE models'}</button>}</div>
@@ -3073,7 +3088,10 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
             }))}>Show suggested models</button>
           </div>}
           {provider==='ollama'&&<input className="field font-mono text-xs" spellCheck="false" value={profile.model} onChange={e=>patchProfile({model:e.target.value})} placeholder="Locally installed Ollama model name"/>}
-          <p className="text-[11px] text-emerald-300 leading-5">Custom paid model IDs are disabled. OpenRouter discovery requires zero pricing and a <code>:free</code> variant; with Web enabled it also requires advertised tool support. Groq/Gemini discovery uses free-tier allowlists; Ollama models run locally.</p>
+          <details className="mt-1 text-[11px] text-emerald-200/80">
+            <summary className="cursor-pointer py-1">How are free models selected?</summary>
+            <p className="mt-1 leading-5">Custom paid model IDs are disabled. OpenRouter discovery requires zero pricing and a <code>:free</code> variant; with Web enabled it also requires advertised tool support. Groq/Gemini discovery uses free-tier allowlists; Ollama models run locally.</p>
+          </details>
           {modelError&&<p className="text-xs text-amber-300 mt-1">{modelError}</p>}
         </div>
         </div>}
@@ -3088,7 +3106,7 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
         <div className="border-t border-slate-800 pt-4 space-y-3">
           <div className="flex items-center justify-between gap-2"><strong className="text-sm text-lime-200 flex items-center gap-2"><Icon name="image" size={18}/> Images · AI Horde (FREE)</strong>
             <a href="https://aihorde.net/" target="_blank" rel="noopener noreferrer" className="text-xs text-lime-300 underline">AI Horde</a></div>
-          <p className="text-xs text-slate-300 leading-5">The image icon beside the composer switches to text-to-image mode. AI Horde's anonymous public key is used by default: no registration or payment. A personal key is optional and may improve priority. Volunteer workers generate the image, not your chat model.</p>
+          <p className="text-xs text-slate-300 leading-5">AI Horde uses free volunteer workers. Anonymous use requires no registration; a personal key is optional. Images can also be requested automatically by the chat model.</p>
           <div><label className="text-xs font-semibold text-slate-300">Personal Horde API key (optional)</label>
             <input className="field mt-2" type="password" autoComplete="off" placeholder="Empty = anonymous (no registration)"
               value={value.imageHorde?.key||''}
@@ -3114,13 +3132,17 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
           <p className="text-xs text-slate-400 leading-5">Search is optional. Tavily is the only supported hosted search service.</p>
         <div className="border-t border-slate-800 pt-4 space-y-3">
           <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 font-semibold text-sm"><Icon name="globe" size={17} className="text-lime-300"/> Web search · FREE only</div><label className="flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" className="accent-lime-500 h-4 w-4" checked={!!value.search.enabled} onChange={e=>patchSearch({enabled:e.target.checked})}/> Default on</label></div>
-          <p className="text-xs leading-5 text-amber-200">OpenRouter hosted search was REMOVED because even a free AI model can trigger separately billable searches. Only Tavily FREE Researcher basic search is allowed. No paid-search fallback.</p>
+          <p className="text-xs leading-5 text-amber-200">Only Tavily FREE Researcher search is supported. No paid-search fallback.</p>
           <div><label className="block text-xs font-semibold text-slate-300 mb-2">Tavily FREE Researcher API key</label><div className="relative"><input className="field pr-12" type={showSearchKey?'text':'password'} autoComplete="off" placeholder="tvly-... (free plan only)" value={value.search.tavilyKey} onChange={e=>patchSearch({tavilyKey:e.target.value,tavilyFreeConfirmed:false})}/><button className="absolute right-3 top-2.5 text-slate-400" aria-label="Show or hide Tavily key" onClick={()=>setShowSearchKey(v=>!v)}><Icon name={showSearchKey?'eyeoff':'eye'}/></button></div><p className="text-xs text-slate-400 mt-2">Free plan = <strong>1,000 credits per calendar month</strong>, then search stops; no payment card required. <a className="text-lime-300 underline" target="_blank" rel="noopener noreferrer" href="https://app.tavily.com/">Create free key</a> · <a className="text-lime-300 underline" target="_blank" rel="noopener noreferrer" href="https://www.tavily.com/pricing">Official quotas</a>.</p></div>
           <label className="flex gap-2 items-start rounded-xl border border-amber-700/60 bg-amber-950/20 p-3 text-xs leading-5 text-amber-100"><input type="checkbox" className="h-4 w-4 mt-1 accent-emerald-500 shrink-0" checked={!!value.search.tavilyFreeConfirmed} onChange={e=>patchSearch({tavilyFreeConfirmed:e.target.checked})}/><span><strong>Required for search:</strong> My Tavily key is on the free, no-credit-card Researcher plan. NOT a paid, subscription or pay-as-you-go account.</span></label>
           <div><label className="block text-xs font-semibold text-slate-300 mb-2">Sources returned per tool call</label><select className="field" value={value.search.maxResults} onChange={e=>patchSearch({maxResults:Number(e.target.value)})}>{[2,3,4,5,8,10].map(n=><option key={n} value={n}>{n} sources</option>)}</select></div>
           <div><label className="block text-xs font-semibold text-slate-300 mb-2">Maximum web searches per message (1 Basic credit each)</label><select className="field" value={searchBudget(value)} onChange={e=>patchSearch({maxToolSearches:Number(e.target.value)})}>{[1,2,3].map(n=><option key={n} value={n}>{n} search{n>1?'es':''} maximum</option>)}</select><p className="text-[11px] text-slate-400 mt-1">The model may also open up to 3 retrieved pages with Basic Extract, each conservatively counted as one local Tavily credit. Every model continuation uses another free LLM request. No paid fallback.</p></div>
           <Quota provider="tavily"/>
-          <p className="text-[11px] text-amber-200 leading-5">{FREE_DETAILS.tavily} The workbench supplies the current browser date, and recent-news searches may add a Basic search publication-date filter without additional credits. Citation checks flag links absent from retrieved evidence, but cannot independently fact-check every claim. The AI selects search queries from the conversation using function calling. <strong>Search queries are sent to Tavily and may contain details from your conversation.</strong> Some free models do not support tools; select a tool-capable model if your provider rejects the request. No chargeable search plugins or paid fallback.</p>
+          <p className="text-xs text-amber-200">Search queries may include information from your conversation and are sent to Tavily.</p>
+          <details className="text-[11px] text-slate-300 border border-slate-800 rounded-lg">
+            <summary className="cursor-pointer px-3 py-2 text-emerald-200">Search limits, citations and privacy details</summary>
+            <p className="px-3 pb-3 leading-5">{FREE_DETAILS.tavily} The workbench supplies the current browser date, and recent-news searches may add a Basic search publication-date filter without additional credits. Citation checks flag links absent from retrieved evidence, but cannot independently fact-check every claim. The AI selects search queries from the conversation using function calling. <strong>Search queries are sent to Tavily and may contain details from your conversation.</strong> Some free models do not support tools; select a tool-capable model if your provider rejects the request. No chargeable search plugins or paid fallback. OpenRouter hosted search was removed because even free AI models can trigger billable hosted searches.</p>
+          </details>
         </div>
         </div>}
         {settingsPage==='advanced'&&<div className="space-y-4">
