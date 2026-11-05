@@ -87,6 +87,15 @@ The browser client may directly call **AI Horde** to generate images from the us
 - Groq's HTTP 429 retry hints may use fractional millisecond notation (e.g. `899.999999ms`). Parse these correctly alongside seconds/minutes/hours, apply the existing bounded automatic wait policy, honour Stop/Abort, and never switch to paid services. If the wait policy ultimately cannot finish a researched answer, keep the already retrieved and traceable links visible with a clear incomplete-answer notice.
 - Do not mistake client arithmetic/context checks, source preservation or no-more-tools constraints for fact-checking. Keep the model accountable for its final text and citations.
 
+## Smart AI Horde model discovery and image quality (5 November 2026)
+
+- Live model discovery must be lazy, cached and time-bounded. Use actual active Horde model names and worker availability rather than a stale static list, with a safe original-request fallback if the public API or CORS fails.
+- Read the public Horde Model Reference for optional recommended steps, CFG, samplers, schedulers and CLIP skip. Missing recommendations are not a licence for arbitrary limits. Respect known NSFW flags and safe-content constraints. Avoid infinite fallback or discovery loops.
+- The LLM can propose negative prompt, style, aspect, quality, model hint, steps, CFG, sampler and numeric seed in the existing one-per-turn image tool call, but the browser verifies names, bounds settings, enforces user-selected model and speed/quality controls and applies the existing free quota/privacy consent. No additional model inference call solely for model discovery.
+- Preserve manual AI Horde mode, the original square 20-step Basic request, capped 512/768 size selection, anonymous key option, user consent, R2-disabled local Blob/IndexedDB storage and downloads. No paid providers or backend.
+- Show actual model, seed, dimensions and resolved settings in the image three-dot menu, stored alongside image metadata. Don't claim an image was improved without side-by-side visual tests. Model reference, live status and network failures must fail safely without hanging a job.
+- Test model selection and submitted payload shape using mocks, then verify live browser CORS and actual volunteer-worker results.
+
 ## Mobile Settings information architecture (5 November 2026)
 
 - Prefer a short Settings home screen for current provider/model, service configuration status and clear routes to AI provider, Web search, Images, Advanced, Usage & safety and Diagnostics; avoid an enormous single settings scroll. Make navigation and Back explicit on small screens.
