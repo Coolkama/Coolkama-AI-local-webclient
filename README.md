@@ -4,6 +4,17 @@ A standalone, mobile-first, free-tier-first LLM chat and web-search client built
 
 > **Project requirements:** [Scope and guardrails](docs/PROJECT_SCOPE.md). Read these before making changes.
 
+## Research-loop and Groq millisecond rate-limit fixes (build v18)
+
+A 5 November 2026 conversation diagnostic exposed a failure on a follow-up about a Michigan public-health doctor. A normal greeting and two manual Retry clicks worked, then web research successfully found and opened results. A later research question used **three Tavily searches and three unique page opens** but continued issuing extra `web_open` calls for already cached pages after that budget had been consumed. The accumulated tool history grew to the configured ~8K input-context budget, caused repeated Groq token-per-minute `429` responses, and ultimately failed without a final answer.
+
+**Mitigations:**
+- When both the current turn's permitted searches and unique page opens are exhausted, stop advertising the exhausted `web_search` and `web_open` functions. The next model call can still request browser-owned `create_diagram` or `generate_image`, so a researched diagram or image is possible. Following that opportunity, send a *final-only* model request with `tool_choice:"none"`. This prevents endless cached-page reopens while retaining unchanged tools during ordinary research rounds. The underlying Tavily free-usage counters and maxima are unchanged.
+- Groq sometimes returns fractional **milliseconds** in its rate-limit message (e.g. `Please try again in 899.999999ms`). The rate-limit parser now understands milliseconds and combined units rather than treating this as an unparseable error. It still uses bounded automatic waits/retries, never upgrades to a paid plan/model, and obeys local caps.
+- If Groq still exhausts its allowance after retrieving web evidence, preserve the **retrieved source links** as an explicitly incomplete answer rather than replacing the entire reply with a bare error. Source links are not claimed to be a verified generated summary.
+
+The parser and dispatcher have been syntax/unit checked, but this specific multi-round Android/Groq end-to-end scenario must be exercised in the live app to confirm timing and response quality.
+
 ## Assistant reply actions — Copy, Speak, Retry (build v16)
 
 Each assistant reply now has a compact **three-icon action bar immediately beneath its chat bubble** (including older messages, generated diagrams and image replies):
