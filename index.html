@@ -2170,7 +2170,7 @@ function hordeNormaliseModels(data){
   const byName=new Map();
   for(const row of data){
     if(!row||typeof row.name!=='string'||!row.name.trim()||row.name.length>140)continue;
-    if(row.type&&row.type!=='image')continue;
+    if(row.type&&!['image','stable','image_generation'].includes(row.type))continue;
     const count=Math.max(0,Math.min(10000,Number(row.count)||0));
     if(count<1)continue;
     const model={name:row.name.trim(),count,
@@ -2189,12 +2189,22 @@ async function fetchHordeModels({force=false,signal}={}){
     return hordeModelCache.models;
   if(hordeModelCache.promise)return hordeModelCache.promise;
   const promise=(async()=>{
-    const data=await hordeJson(HORDE_IMAGE_API+'/status/models?type=image',{
-      headers:{'Client-Agent':HORDE_CLIENT_AGENT},signal});
-    const models=hordeNormaliseModels(data);
-    if(!models.length)throw new Error('There are no currently available compatible image workers.');
-    hordeModelCache={at:Date.now(),models,promise:null};
-    return models;
+    const controller=new AbortController();
+    const abort=()=>controller.abort();
+    if(signal?.aborted)throw new DOMException('Stopped','AbortError');
+    signal?.addEventListener('abort',abort,{once:true});
+    const timer=setTimeout(abort,8000);
+    try{
+      const data=await hordeJson(HORDE_IMAGE_API+'/status/models?type=image',{
+        headers:{'Client-Agent':HORDE_CLIENT_AGENT},signal:controller.signal});
+      const models=hordeNormaliseModels(data);
+      if(!models.length)throw new Error('There are no currently available compatible image workers.');
+      hordeModelCache={at:Date.now(),models,promise:null};
+      return models;
+    }finally{
+      clearTimeout(timer);
+      signal?.removeEventListener('abort',abort);
+    }
   })();
   hordeModelCache.promise=promise;
   try{return await promise;}
@@ -2204,9 +2214,14 @@ async function fetchHordeModelReference(name,signal){
   const entry=hordeReferenceCache.get(name);
   if(entry&&Date.now()-entry.at<HORDE_MODEL_REFERENCE_MS)return entry.record;
   let record=null;
+  const controller=new AbortController();
+  const abort=()=>controller.abort();
+  if(signal?.aborted)throw new DOMException('Stopped','AbortError');
+  signal?.addEventListener('abort',abort,{once:true});
+  const timer=setTimeout(abort,5000);
   try{
     const response=await fetch(HORDE_MODEL_REFERENCE_API+encodeURIComponent(name),{
-      cache:'default',mode:'cors',signal,headers:{Accept:'application/json'}});
+      cache:'default',mode:'cors',signal:controller.signal,headers:{Accept:'application/json'}});
     if(response.ok){
       const raw=await response.json();
       if(raw&&typeof raw==='object'&&!Array.isArray(raw))record=raw;
@@ -2215,6 +2230,9 @@ async function fetchHordeModelReference(name,signal){
     if(signal?.aborted)throw error;
     diagLog('normal','horde-model-reference-unavailable',{
       model:name,reason:String(error.message||error).slice(0,130)});
+  }finally{
+    clearTimeout(timer);
+    signal?.removeEventListener('abort',abort);
   }
   hordeReferenceCache.set(name,{record,at:Date.now()});
   if(hordeReferenceCache.size>80)hordeReferenceCache.delete(hordeReferenceCache.keys().next().value);
@@ -2335,17 +2353,24 @@ async function resolveHordeGeneration(prompt,settings={},preferences={},signal,o
   }
   const pinned=String(settings.model||'auto');
   const exactPinned=available.find(x=>x.name===pinned);
-  const chosen=exactPinned||[...available].sort((a,b)=>
+  let chosen=exactPinned||[...available].sort((a,b)=>
     scoreHordeModel(b,{...requested,style})-scoreHordeModel(a,{...requested,style}))[0];
   if(!chosen)throw new Error('No compatible AI Horde image models available.');
   onPhase('Selected '+chosen.name+' · checking model recommendations…');
-  const reference=await fetchHordeModelReference(chosen.name,signal);
-  // Do not submit checkpoints explicitly marked NSFW by the reference.
+  let reference=await fetchHordeModelReference(chosen.name,signal);
+  // Limit retries when a model is marked NSFW; never recursively alternate
+  // between two unsafe models or submit a known NSFW checkpoint.
   if(reference?.nsfw===true){
-    const other=available.find(m=>m.name!==chosen.name&&m.nsfw!==true);
-    if(!other)return {payload:basic(),details:{mode:'basic',source:'model safety fallback',fallback:true,
+    const alternatives=available.filter(m=>m.name!==chosen.name&&m.nsfw!==true)
+      .sort((a,b)=>scoreHordeModel(b,{...requested,style})-scoreHordeModel(a,{...requested,style}));
+    let replacement=null;
+    for(const candidate of alternatives.slice(0,3)){
+      const record=await fetchHordeModelReference(candidate.name,signal);
+      if(record?.nsfw!==true){replacement={candidate,record};break;}
+    }
+    if(!replacement)return {payload:basic(),details:{mode:'basic',source:'model safety fallback',fallback:true,
       width:size,height:size,steps:20,model:null}};
-    return resolveHordeGeneration(prompt,{...settings,model:other.name},preferences,signal,onPhase);
+    chosen=replacement.candidate;reference=replacement.record;
   }
   const sampled=hordeSamplingForModel(chosen.name,reference,requested);
   const params={width:dims.width,height:dims.height,steps:sampled.steps,
