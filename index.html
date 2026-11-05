@@ -151,25 +151,27 @@
       --matrix-green:#9bff55; --matrix-lime:#baff69; --matrix-muted:#a5c5ad; }
     html, body {background:#010a05}
     #root { position:relative; z-index:1; background:transparent; }
-    #matrix-backdrop {position:fixed; z-index:0; inset:0; pointer-events:none; overflow:hidden;
-      /* The EXACT gradient used behind the SVG launch robot. */
-      background:radial-gradient(ellipse at 50% 37%, #123b2a 0%, #06140e 42%, #010703 86%);}
-    #matrix-backdrop::before {content:"";position:absolute;inset:0;pointer-events:none;
-      background-image:linear-gradient(#45ff9617 1px,transparent 1px),
-                       linear-gradient(90deg,#45ff9617 1px,transparent 1px);
-      background-size:30px 30px;
-      mask-image:radial-gradient(ellipse at 50% 40%,#000,transparent 85%);}
-    #matrix-backdrop::after {content:""; position:absolute; inset:0; z-index:1;
-      background:linear-gradient(90deg,#01080353 0%,transparent 18%,transparent 82%,#01080375 100%),
-                 repeating-linear-gradient(0deg,#020e0714 0px,#020e0714 2px,transparent 2px,transparent 6px);}
-    .matrix-column {position:absolute; left:var(--left); top:-95vh; height:220vh; width:1.1rem;
-      color:#72fd66; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
-      font-size:clamp(11px,1.45vw,16px); font-weight:600; line-height:1.65; letter-spacing:.36em;
-      writing-mode:vertical-rl; white-space:nowrap; text-shadow:0 0 7px #43f96c99,0 0 14px #2dff5c45;
-      opacity:clamp(.27,calc(var(--alpha,.30) * 2.3),.74); transform:translate3d(0,-20%,0);
-      animation:matrix-stream var(--duration,27s) linear infinite; animation-delay:var(--delay,0s);}
-    @keyframes matrix-stream {from{transform:translate3d(0,-24%,0)}
-      to{transform:translate3d(0,25%,0)}}
+    /* Exact splash-screen binary backdrop: same gradient, grid, skew, opacity and drift. */
+    #matrix-backdrop {
+      position:fixed; z-index:0; inset:0; pointer-events:none; overflow:hidden; isolation:isolate;
+      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+      background:radial-gradient(ellipse at 50% 37%,#123b2a 0%,#06140e 42%,#010703 86%);
+    }
+    #matrix-backdrop::before {
+      content:""; position:absolute; inset:0; pointer-events:none; z-index:0;
+      background-image:linear-gradient(#45ff9610 1px,transparent 1px),
+                       linear-gradient(90deg,#45ff9610 1px,transparent 1px);
+      background-size:30px 30px; opacity:.45;
+      mask-image:radial-gradient(ellipse at 50% 40%,#000,transparent 75%);
+    }
+    #matrix-backdrop::after {
+      content:"01001100 10010110 11000101 00110010 00101011 10100111 10101100";
+      position:absolute; inset:0; z-index:0; overflow:hidden; pointer-events:none;
+      transform:skewY(-12deg) translateY(-10%);
+      font-size:clamp(14px,3vw,24px); font-weight:700; line-height:4.1;
+      letter-spacing:.8em; overflow-wrap:anywhere; opacity:.075; color:#73ff97;
+      animation:cheap-rain 8s linear infinite alternate;
+    }
     #root .matrix-ui {background:transparent;color:#e4f6e9;}
     #root .matrix-sidebar {background:rgba(3,19,11,.92);border-right-color:#275c37;
       box-shadow: 6px 0 28px #0006;backdrop-filter:blur(15px);}
@@ -240,9 +242,8 @@
     #root .matrix-ui .free-alert {background:linear-gradient(115deg,#05280d,#0c2514);}
     #root .matrix-hero {background:rgba(4,23,12,.70);border:1px solid #316b44;
       box-shadow:0 0 50px #204e2120;border-radius:22px;max-width:600px;padding:32px 20px;}
-    @media (max-width:640px){.matrix-column{font-size:12px;}
-      #root .matrix-chat {background:rgba(2,12,7,.10);} }
-    @media (prefers-reduced-motion:reduce) {.matrix-column{animation:none;transform:none;}}
+    @media (max-width:640px){#root .matrix-chat {background:rgba(2,12,7,.10);} }
+    @media (prefers-reduced-motion:reduce){#matrix-backdrop::after{animation:none;}}
   </style>
 </head>
 <body class="splash-active">
@@ -363,7 +364,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github-dark.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/common.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-<div id="matrix-backdrop" aria-hidden="true"><span class="matrix-column" style="--left:1.59%;--duration:19s;--delay:0s;--alpha:0.13">0101011011101001100101010011011101001010001</span><span class="matrix-column" style="--left:6.14%;--duration:30s;--delay:-7s;--alpha:0.22">1011001010100110010111011100110101011001011</span><span class="matrix-column" style="--left:10.68%;--duration:27s;--delay:-14s;--alpha:0.30">10010101101110001010101110100010110001101</span><span class="matrix-column" style="--left:15.23%;--duration:24s;--delay:-1s;--alpha:0.19">0110101101011010110010111010110100101</span><span class="matrix-column" style="--left:19.77%;--duration:21s;--delay:-8s;--alpha:0.28">0101011011101001100101010011011101001010001</span><span class="matrix-column" style="--left:24.32%;--duration:32s;--delay:-15s;--alpha:0.16">1011001010100110010111011100110101011001011</span><span class="matrix-column" style="--left:28.86%;--duration:29s;--delay:-2s;--alpha:0.25">10010101101110001010101110100010110001101</span><span class="matrix-column" style="--left:33.41%;--duration:26s;--delay:-9s;--alpha:0.13">0110101101011010110010111010110100101</span><span class="matrix-column" style="--left:37.95%;--duration:23s;--delay:-16s;--alpha:0.22">0101011011101001100101010011011101001010001</span><span class="matrix-column" style="--left:42.50%;--duration:20s;--delay:-3s;--alpha:0.30">1011001010100110010111011100110101011001011</span><span class="matrix-column" style="--left:47.05%;--duration:31s;--delay:-10s;--alpha:0.19">10010101101110001010101110100010110001101</span><span class="matrix-column" style="--left:51.59%;--duration:28s;--delay:-17s;--alpha:0.28">0110101101011010110010111010110100101</span><span class="matrix-column" style="--left:56.14%;--duration:25s;--delay:-4s;--alpha:0.16">0101011011101001100101010011011101001010001</span><span class="matrix-column" style="--left:60.68%;--duration:22s;--delay:-11s;--alpha:0.25">1011001010100110010111011100110101011001011</span><span class="matrix-column" style="--left:65.23%;--duration:19s;--delay:-18s;--alpha:0.13">10010101101110001010101110100010110001101</span><span class="matrix-column" style="--left:69.77%;--duration:30s;--delay:-5s;--alpha:0.22">0110101101011010110010111010110100101</span><span class="matrix-column" style="--left:74.32%;--duration:27s;--delay:-12s;--alpha:0.30">0101011011101001100101010011011101001010001</span><span class="matrix-column" style="--left:78.86%;--duration:24s;--delay:-19s;--alpha:0.19">1011001010100110010111011100110101011001011</span><span class="matrix-column" style="--left:83.41%;--duration:21s;--delay:-6s;--alpha:0.28">10010101101110001010101110100010110001101</span><span class="matrix-column" style="--left:87.95%;--duration:32s;--delay:-13s;--alpha:0.16">0110101101011010110010111010110100101</span><span class="matrix-column" style="--left:92.50%;--duration:29s;--delay:0s;--alpha:0.25">0101011011101001100101010011011101001010001</span><span class="matrix-column" style="--left:97.05%;--duration:26s;--delay:-7s;--alpha:0.13">1011001010100110010111011100110101011001011</span></div>
+<div id="matrix-backdrop" aria-hidden="true"></div>
 <div id="root"></div>
 <script type="text/babel">
 const {useState, useEffect, useLayoutEffect, useRef, useMemo} = React;
