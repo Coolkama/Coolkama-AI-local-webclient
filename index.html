@@ -2925,7 +2925,10 @@ function Message({message,streaming,onContinue,canContinue=false,onApproveImage,
   ]:[];
   return <div className={`flex gap-3 md:gap-4 ${user?'flex-row-reverse':''}`}>
     <div className={`matrix-avatar ${user?'user-avatar':''} shrink-0 w-8 h-8 rounded-xl grid place-items-center text-xs font-bold`}>
-      {user?'You':<Icon name="spark" size={16}/>}</div>
+      {user?'You':SIDEBAR_ROBOT_IMAGE
+        ?<img src={SIDEBAR_ROBOT_IMAGE} alt="Tight Arse AI robot" width="32" height="32"
+          className="block w-full h-full object-contain p-0.5"/>
+        :<Icon name="bot" size={16}/>}</div>
     <div className={`min-w-0 max-w-[calc(100%-48px)] md:max-w-[85%] ${user?'text-right':''}`}>
       <div className={`text-[11px] font-medium mb-1.5 ${user?'text-slate-400':'text-lime-300'}`}>{user?'You':'Assistant'}{streaming&&<span className="ml-2 text-slate-500">● Streaming</span>}{message.webSearch&&<span className="ml-2 text-lime-300 inline-flex gap-1 items-center"><Icon name="globe" size={12}/> Web</span>}</div>
       <div className={`text-left rounded-2xl px-3.5 py-3 md:px-4 ${user?'chat-user-bubble':'chat-assistant-bubble'}`}>
