@@ -98,6 +98,21 @@
     .md table { border-collapse: collapse; display: block; max-width: 100%; overflow-x: auto; margin: 12px 0; }
     .md th, .md td { border: 1px solid #334155; padding: 6px 10px; white-space: nowrap; }
     .md th { background: #1e293b; }
+    /* Compact factual two-column tables must show BOTH columns on a phone,
+       rather than forcing users to discover horizontal scroll. Wider tables
+       retain their existing sideways scrolling behaviour. */
+    @media (max-width: 680px) {
+      .md table:has(tr > :nth-child(2):last-child):not(:has(tr > :nth-child(3))) {
+        display: table; width: 100%; table-layout: fixed; overflow: visible;
+      }
+      .md table:has(tr > :nth-child(2):last-child):not(:has(tr > :nth-child(3))) th,
+      .md table:has(tr > :nth-child(2):last-child):not(:has(tr > :nth-child(3))) td {
+        white-space: normal; overflow-wrap: anywhere; word-break: normal; padding: 7px;
+      }
+      .md table:has(tr > :nth-child(2):last-child):not(:has(tr > :nth-child(3))) tr > :first-child {
+        width: 37%;
+      }
+    }
     .md hr { border-color: #334155; margin: 12px 0; }
     .code-shell { border: 1px solid #334155; background: #0b1222; border-radius: 12px; overflow: hidden; margin: 12px 0; }
     .code-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 38px; padding: 0 8px 0 12px; border-bottom: 1px solid #283449; color: #94a3b8; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -345,7 +360,7 @@
 <div id="root"></div>
 <script type="text/babel">
 const {useState, useEffect, useLayoutEffect, useRef, useMemo} = React;
-const APP_BUILD = '2026-11-05-research-loop-rate-limit-v18';
+const APP_BUILD = '2026-11-05-groq-context-mobile-tables-v19';
 const STORAGE_KEY = 'llm-workbench-v1';
 const USAGE_KEY = 'llm-workbench-free-only-usage-v1';
 // These are deliberately conservative CLIENT-ONLY stops, NOT the providers' real quotas.
@@ -664,6 +679,15 @@ const CONTEXT_WINDOW_CHOICES = [2048,3072,4096,8192,16384,32768,65536];
 function contextInputLimit(profile){
   const n=Number(profile?.contextTokens);
   return Number.isFinite(n)?Math.max(2048,Math.min(65536,Math.trunc(n))):8192;
+}
+// The free Groq GPT-OSS TPM allowance seen in diagnostics is 8,000 tokens.
+// A selected 8K estimated context is too close to that real API limit because
+// tool schemas, protocol overhead and tokenizer differences consume headroom.
+// This only changes the *sent* Groq request, never persisted chat or settings.
+const GROQ_FREE_CONTEXT_CEILING=6000;
+function effectiveRequestInputLimit(provider,profile){
+  const desired=contextInputLimit(profile);
+  return provider==='groq'?Math.min(desired,GROQ_FREE_CONTEXT_CEILING):desired;
 }
 function outputTokenLimit(profile){
   // Legacy saved maxTokens values stay available for Manual mode, but do not
@@ -1329,7 +1353,7 @@ function cachedPrefillRequest(provider,profile,prefix,previous){
   if(prefix.provider&&prefix.provider!==provider)return null;
   if(prefix.model&&prefix.model!==profile.model)return null;
   const messages=[...prefix.messages,{role:'assistant',content:previous}];
-  const budget=contextInputLimit(profile);
+  const budget=effectiveRequestInputLimit(provider,profile);
   const estimatedTokens=messages.reduce((sum,m)=>sum+contextMessageTokens(m),0);
   if(estimatedTokens>budget)return null;
   return {protocol:'assistant-prefill',messages,stats:{
@@ -1552,8 +1576,8 @@ function shortenContextMessage(message,targetTokens){
   }
   return newMessage;
 }
-function rollContextMessages(original,profile,{keepRecentTurns=2}={}){
-  const budget=contextInputLimit(profile);
+function rollContextMessages(original,profile,{keepRecentTurns=2,provider=null}={}){
+  const budget=effectiveRequestInputLimit(provider,profile);
   const systems=[],groups=[];
   for(const message of original){
     if(message.role==='system'&&!groups.length){systems.push({...message});continue;}
@@ -1805,7 +1829,7 @@ async function retryPrefillAsFollowup({provider,profile,history,previous,instruc
     provider,profile:{...profile,groqPrefill:false},history,previous,
     instruction,followup,dateContext
   });
-  const windowed=rollContextMessages(plan.messages,profile);
+  const windowed=rollContextMessages(plan.messages,profile,{provider});
   const joiner=createContinuationJoiner(previous,onChange);
   diagLog('normal','prefill-followup-retry',{
     provider,protocol:plan.protocol,...windowed.stats
@@ -2874,7 +2898,7 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
           <select className="field" value={contextInputLimit(profile)} onChange={e=>patchProfile({contextTokens:Number(e.target.value)})}>
             {CONTEXT_WINDOW_CHOICES.map(n=><option key={n} value={n}>{n.toLocaleString('en-GB')} estimated tokens</option>)}
           </select>
-          <p className="text-[11px] text-slate-400 mt-1">Keeps the latest two conversation turns, shortens oversized excerpts and drops older turns only from the API request. The full chat stays in this browser. No LLM summarisation calls. {provider==='groq'?'Groq defaults to 8,192 estimated input tokens to retain more code across continuations; larger requests can trigger rate-limit waits.':'Estimates vary by model and provider.'}</p>
+          <p className="text-[11px] text-slate-400 mt-1">Keeps the latest two conversation turns, shortens oversized excerpts and drops older turns only from the API request. The full chat stays in this browser. No LLM summarisation calls. {provider==='groq'?'Groq free requests currently use up to 6,000 estimated input tokens, even if a larger context is selected, to leave headroom under the observed 8,000 TPM limit. Full chat history remains saved locally.':'Estimates vary by model and provider.'}</p>
           {provider==='groq'&&<label className="flex items-start gap-2 text-xs text-slate-300 mt-3"><input type="checkbox" className="accent-lime-500 mt-0.5" checked={profile.groqPrefill!==false} onChange={e=>patchProfile({groqPrefill:e.target.checked})}/><span><strong>GPT-OSS assistant prefilling (experimental)</strong><span className="block text-slate-400 mt-1">Keeps the original request and tool schema byte-for-byte consistent for caching. Some Groq models still restart long code. Automatic completion may retry with a normal follow-up, counting every request against the six-attempt and free-use limits. Manual Continue makes only one request per press; press it again after a misalignment to use the follow-up strategy. Disable this option to always use follow-up continuation.</span></span></label>}
         </div>
         <div>
@@ -3107,7 +3131,7 @@ function App() {
     });
     const continuationWindow=cachedRequest
       ?{messages:cachedRequest.messages,stats:cachedRequest.stats}
-      :rollContextMessages(continuationPlan.messages,config);
+      :rollContextMessages(continuationPlan.messages,config,{provider});
     if(continuationProtocol(provider,config)==='assistant-prefill'&&!cachedRequest)
       diagLog('normal','prefill-cache-fallback',{
         reason:storedPrefix?'input-budget-exceeded':'original-request-not-in-memory',
@@ -3356,7 +3380,7 @@ function App() {
             'Research finished · preparing final answer…':canSearch||canOpen?
             `AI thinking · ${searchesUsed}/${budget} searches · ${opensUsed}/${MAX_TOOL_OPENS} opens…`:
             'Research finished · completing answer without more web calls…');
-          const windowed=rollContextMessages(withRequestDate(messages,requestDateContext),config);
+          const windowed=rollContextMessages(withRequestDate(messages,requestDateContext),config,{provider});
           const requestMessages=windowed.messages;
           continuationPrefix=snapshotContinuationPrefix(requestMessages,canUseBrowserTools,availableTools,finalOnlyResearch,provider,config.model);
           diagLog('normal','context-window',{...windowed.stats,round,provider},roundCtx);
@@ -3407,7 +3431,7 @@ function App() {
             }
             status('Groq rejected a tool call · finishing with retrieved evidence…');
             output='';paint();
-            const recoveredWindow=rollContextMessages([{role:'system',content:'Answer the latest user request using only the already returned web_search results. This is a final, text-only response. Do not call any tool, request additional results, emit tool markup, or fabricate URLs. Cite the known source IDs and distinguish limited or noisy excerpts.'},...requestMessages],config);
+            const recoveredWindow=rollContextMessages([{role:'system',content:'Answer the latest user request using only the already returned web_search results. This is a final, text-only response. Do not call any tool, request additional results, emit tool markup, or fabricate URLs. Cite the known source IDs and distinguish limited or noisy excerpts.'},...requestMessages],config,{provider});
             const recoveryMessages=recoveredWindow.messages;
             diagLog('normal','context-window',{...recoveredWindow.stats,provider,recovery:true},roundCtx);
             try{
