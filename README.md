@@ -4,6 +4,16 @@ A standalone, mobile-first, free-tier-first LLM chat and web-search client built
 
 > **Project requirements:** [Scope and guardrails](docs/PROJECT_SCOPE.md). Read these before making changes.
 
+## Inline generated visuals, without attachment-style cards (build v21)
+
+Generated Mermaid diagrams and AI Horde images now appear **within the assistant's Markdown answer**, instead of being unconditionally appended after the answer text. Once a visual tool succeeds, the LLM is instructed to put an unambiguous standalone `[[diagram]]` or `[[image]]` placement marker at its intended location in its final response. The browser replaces that marker with the actual rendered visual; the marker is not displayed, copied or spoken. It is ignored if the matching media does not exist, and duplicates are suppressed. Markers inside fenced code are not treated as layout instructions.
+
+For **existing saved chats**, or free models that omit a placement marker, the client chooses a reasonable fallback: directly before a paragraph referring to the diagram/image *above*, after one referring to it *below*, or after the introductory paragraph. This is a display-only change to existing content and does not require regenerating old answers or spending inference tokens. The user may still inspect editable Mermaid source and request revisions as before. Both a diagram and an image can have independent placement in one assistant reply when supported.
+
+**Visual presentation is simpler:** The diagram or generated picture is shown directly within the answer, with no permanent title card, background label, row of download buttons or source information panel. Tapping the visual opens its full-size version. A small three-dot icon on the visual opens the existing actions: SVG/PNG/Mermaid source downloads and editable-source viewing for diagrams, or image download/open-original and provider metadata for AI Horde. White Mermaid backgrounds and independently styled nodes remain intact. AI Horde progress, cancellation and one-time privacy consent remain available at the image's inline position. The surrounding chat message's Copy/Speak/Retry actions remain below the entire reply.
+
+The attached full diagnostics file for the observed unsolicited diagram confirms that the model called `create_diagram` before composing its final answer, which referred to the diagram as already above the text; the previous client appended it at the bottom regardless. It also had to correct invalid Mermaid syntax twice before successful rendering. Model decisions to create optional diagrams remain unchanged in this version; this release only changes layout and visual chrome. Browser rendering still requires live Android Chrome verification.
+
 ## Sidebar branding matches the splash screen (build v20)
 
 The conversation drawer now replaces its temporary star-in-a-box icon with **the exact grumpy green robot SVG already used by the splash screen**. A standalone data URL is captured from the existing inline mascot at startup, before the temporary splash DOM is removed, so the sidebar reuses the same artwork without a second copy, extra download, new file, or external image dependency.
