@@ -2363,12 +2363,14 @@ function inlineReplyParts(content,mediaTypes=[]){
     const marker=/^\[\[(diagram|image)\]\]$/i.exec(trimmed);
     if(!fence&&marker){
       const type=marker[1].toLowerCase();
+      // Markers are internal layout hints, never user-visible prose.
+      // Ignore absent and repeated visual slots without printing tokens.
+      if(at>last)parts.push({type:'text',text:original.slice(last,at)});
       if(allowed.has(type)&&!seen.has(type)){
-        if(at>last)parts.push({type:'text',text:original.slice(last,at)});
         parts.push({type});
-        last=at+line.length;
         seen.add(type);
       }
+      last=at+line.length;
     }
     const match=fencePattern.exec(trimmed);
     if(match){
