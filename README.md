@@ -4,6 +4,14 @@ A standalone, mobile-first, free-tier-first LLM chat and web-search client built
 
 > **Project requirements:** [Scope and guardrails](docs/PROJECT_SCOPE.md). Read these before making changes.
 
+## Splash-matched chat background and assistant mascot (build v24)
+
+The in-chat assistant avatar now reuses the **exact grumpy robot SVG** captured from the existing four-second launch splash, just as the sidebar already does. All assistant messages, including saved conversation history, use the same mascot without a separate asset or network request.
+
+The chat backdrop now uses the splash screen's **exact radial green gradient, 30px grid, diagonal skewed binary digits and 8-second drifting animation**. The former separate vertical binary columns were removed. Chat controls and message panels are unchanged; reduced-motion preferences continue to disable the binary animation. The launch splash itself is unchanged.
+
+The build identifier is now `2026-11-05-splash-backdrop-v24`, so a browser can distinguish this deployment from v23. Live Android rendering and GitHub Pages cache propagation still need user-side verification.
+
 ## Smart AI Horde image generation (build v23)
 
 Image generation now uses **optional live model selection and model-aware sampling** instead of always letting Horde choose an unspecified model at a fixed 20 steps. Smart mode consults the official AI Horde image-model status endpoint for active workers and approximate queue availability. It selects for requested style (photo, anime, illustration, fantasy, pixel art or digital art) and speed/quality, then consults the public Horde Model Reference v2 endpoint for any published step ranges, CFG, samplers, schedulers and CLIP skip. When metadata is unavailable or blocked by CORS it uses conservative family-level values; when model discovery itself fails it falls back to the original working Basic request before submitting. Discovery requests are cached, time-limited and performed lazily (not at app startup).
