@@ -73,6 +73,13 @@ The browser client may directly call **AI Horde** to generate images from the us
 - Image jobs cannot continue across page closure/reload; previously pending jobs are marked interrupted after reopening. Never invent a generated image URL or claim success before Horde completes. An unavailable/unsupported model tool capability must not trigger a paid provider.
 - The same optional AI Horde key, volunteer-worker disclosure, anonymous LAION sharing caveat and browser-only download boundaries remain unchanged.
 
+## Groq free TPM input ceiling and mobile tables (5 November 2026)
+
+- A model's Groq **tokens-per-minute (TPM)** quota can reject a *single* input request with HTTP 413, even if the provider context window permits it. Estimate prompt and tool-source budget conservatively: clamp the effective **Groq** request context to **6,000 estimated tokens**, preserving separate stored user preferences and larger settings for other providers, until a model-specific verified allowance warrants a change. Do not attempt to bypass Groq's free limits or switch to paid models.
+- Keep recent conversational turns and valid tool-call/result pairing as the rolling context shortens older text. If a single Groq request still triggers an oversized-input HTTP 413, trim it once more and retry **at most once**, honouring Stop/Abort and counting the extra request under local free-use limits. Do not treat this as a sleep-solvable HTTP 429 condition; 429 remains a separate bounded-wait scenario.
+- Explain the effective Groq ceiling clearly in Settings and retain diagnostic context-window and `groq-oversized-context-retry` events. The original conversation must stay intact.
+- On small phone screens, make two-column Markdown answer tables show both labels and values by wrapping text and using a fixed-width table. Preserve horizontal scrolling for wide three-or-more-column tables.
+
 ## Research budget exhaustion and Groq fractional wait handling (5 November 2026)
 
 - Treat the web tool budget as a **per-user-turn research boundary**. Exhausted search/open tools must not remain endlessly callable even if a previously opened URL can be served from the browser's page-extract cache. Prevent repeat-tool loops and avoid injecting duplicate large tool results into the 8K context budget.
