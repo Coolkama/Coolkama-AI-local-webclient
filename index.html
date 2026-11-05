@@ -345,7 +345,7 @@
 <div id="root"></div>
 <script type="text/babel">
 const {useState, useEffect, useLayoutEffect, useRef, useMemo} = React;
-const APP_BUILD = '2026-11-04-reply-actions-v16';
+const APP_BUILD = '2026-11-05-context-zero-fix-v17';
 const STORAGE_KEY = 'llm-workbench-v1';
 const USAGE_KEY = 'llm-workbench-free-only-usage-v1';
 // These are deliberately conservative CLIENT-ONLY stops, NOT the providers' real quotas.
@@ -2513,7 +2513,7 @@ function Message({message,streaming,onContinue,canContinue=false,onApproveImage,
         {message.status==='stopped'&&<div className="mt-2 text-xs text-amber-400">Generation stopped</div>}
         {message.status==='incomplete'&&<div className="mt-2 text-xs text-amber-400">{message.incompleteReason==='output_limit'?'The response reached the output-token limit. You can continue writing into this same answer.':message.incompleteReason==='unfinished_code'?'The response ended with an unclosed code block. Continue to finish it.':message.incompleteReason==='invalid_code'?'Generated HTML/JavaScript did not pass a syntax check. The code may not run.':message.incompleteReason==='continuation_misaligned'?'Continuation did not join reliably; generation stopped to avoid corrupting the answer.':'Incomplete answer · retrieved sources preserved above'}</div>}
         {legacyOpenCode&&<div className="mt-2 text-xs text-amber-400">This older reply has an unfinished code fence. You can continue it in place.</div>}
-        {!user&&message.contextWindow&&(message.contextWindow.droppedMessages||message.contextWindow.shortenedMessages)&&
+        {!user&&message.contextWindow&&!!(message.contextWindow.droppedMessages||message.contextWindow.shortenedMessages)&&
           <p className="mt-3 text-[11px] text-slate-500">
             <Icon name="layers" size={12}/> Rolling context · {message.contextWindow.budget.toLocaleString('en-GB')} estimated input tokens ·
             {message.contextWindow.droppedMessages?' '+message.contextWindow.droppedMessages+' older messages omitted from this request':''}
