@@ -73,6 +73,13 @@ The browser client may directly call **AI Horde** to generate images from the us
 - Image jobs cannot continue across page closure/reload; previously pending jobs are marked interrupted after reopening. Never invent a generated image URL or claim success before Horde completes. An unavailable/unsupported model tool capability must not trigger a paid provider.
 - The same optional AI Horde key, volunteer-worker disclosure, anonymous LAION sharing caveat and browser-only download boundaries remain unchanged.
 
+## Research budget exhaustion and Groq fractional wait handling (5 November 2026)
+
+- Treat the web tool budget as a **per-user-turn research boundary**. Exhausted search/open tools must not remain endlessly callable even if a previously opened URL can be served from the browser's page-extract cache. Prevent repeat-tool loops and avoid injecting duplicate large tool results into the 8K context budget.
+- After both search and unique-page-open limits are reached, the model gets one further chance to request a browser-owned diagram or image tool, then a final-only completion (the model cannot call any tool). Keep the underlying free counters and the separate image/diagram safeguards unchanged.
+- Groq's HTTP 429 retry hints may use fractional millisecond notation (e.g. `899.999999ms`). Parse these correctly alongside seconds/minutes/hours, apply the existing bounded automatic wait policy, honour Stop/Abort, and never switch to paid services. If the wait policy ultimately cannot finish a researched answer, keep the already retrieved and traceable links visible with a clear incomplete-answer notice.
+- Do not mistake client arithmetic/context checks, source preservation or no-more-tools constraints for fact-checking. Keep the model accountable for its final text and citations.
+
 ## Assistant response action bar (4 November 2026)
 
 - Display unobtrusive labelled **Copy**, **Speak/Stop**, **Retry** buttons immediately below every assistant reply bubble, without crowding or changing the Matrix-green theme or existing code-block actions.
