@@ -1239,7 +1239,7 @@ function toolImageRequest(call){
     if(field==='negative_prompt'&&val.length>600)throw new Error('Negative prompt exceeds 600 characters.');
     if(field==='model_hint'&&val.length>140)throw new Error('Model hint exceeds 140 characters.');
     if(field==='sampler_name'&&val.length>80)throw new Error('Sampler name exceeds 80 characters.');
-    if(field==='seed'&&!/^\\d{1,15}$/.test(val))throw new Error('Seed must contain 1–15 digits.');
+    if(field==='seed'&&!/^\d{1,15}$/.test(val))throw new Error('Seed must contain 1–15 digits.');
     if(field==='style'&&!['auto','photographic','illustration','anime','pixel_art','fantasy','digital_art'].includes(val))
       throw new Error('Unknown image style.');
     if(field==='aspect_ratio'&&!['square','portrait','landscape'].includes(val))
