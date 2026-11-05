@@ -87,6 +87,14 @@ The browser client may directly call **AI Horde** to generate images from the us
 - Groq's HTTP 429 retry hints may use fractional millisecond notation (e.g. `899.999999ms`). Parse these correctly alongside seconds/minutes/hours, apply the existing bounded automatic wait policy, honour Stop/Abort, and never switch to paid services. If the wait policy ultimately cannot finish a researched answer, keep the already retrieved and traceable links visible with a clear incomplete-answer notice.
 - Do not mistake client arithmetic/context checks, source preservation or no-more-tools constraints for fact-checking. Keep the model accountable for its final text and citations.
 
+## Generated visual placement and compact presentation (5 November 2026)
+
+- Treat successful browser-created Mermaid diagrams and AI Horde-generated images as **inline answer components** rather than end-of-message attachments. Ask tool-capable models to place each media item via a standalone `[[diagram]]` or `[[image]]` marker in final Markdown. Interleave the browser-rendered item with Markdown at that location.
+- Never display, speak or copy the internal visual-placement marker. Ignore duplicates and markers without matching media. Do not interpret markers inside fenced code as special commands. Render older conversation media without re-querying the LLM, using context references such as "diagram above" or the first paragraph as a fallback.
+- Keep the original white Mermaid diagram canvas and intact source/export capability, but avoid a titled dashboard-style panel and always-visible SVG/PNG/source buttons. Present an unobtrusive image with a small accessible overflow menu for full-size view, downloads and source inspection; do the same for generated AI Horde pictures. Keep metadata behind the menu unless a storage/privacy warning is necessary.
+- Maintain existing AI Horde consent and in-progress status, local image storage, safe SVG sanitisation, Stop/cancellation, one-per-turn visual tool limits, Copy/Speak/Retry and unchanged free-only provider rules.
+- A wider Mermaid graph may still be small when scaled to mobile width; tapping opens the full-size SVG. Consider later zoom/pan improvements separately if needed. Do not silently generate an additional image service request to improve layout.
+
 ## Assistant response action bar (4 November 2026)
 
 - Display unobtrusive labelled **Copy**, **Speak/Stop**, **Retry** buttons immediately below every assistant reply bubble, without crowding or changing the Matrix-green theme or existing code-block actions.
