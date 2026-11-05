@@ -2158,6 +2158,213 @@ function hordeImageUrl(value){
     return 'data:image/webp;base64,'+value;
   throw new Error('AI Horde returned an unsupported image format or address.');
 }
+// Live model selection is advisory. The Horde itself always owns worker choice.
+// Cache network discovery for ten minutes, model reference for an hour.
+const HORDE_MODEL_REFERENCE_API='https://models.aihorde.net/api/model_references/v2/image_generation/model/';
+const HORDE_MODEL_CACHE_MS=10*60*1000;
+const HORDE_MODEL_REFERENCE_MS=60*60*1000;
+let hordeModelCache={at:0,models:[],promise:null};
+const hordeReferenceCache=new Map();
+function hordeNormaliseModels(data){
+  if(!Array.isArray(data))throw new Error('AI Horde did not return a model list.');
+  const byName=new Map();
+  for(const row of data){
+    if(!row||typeof row.name!=='string'||!row.name.trim()||row.name.length>140)continue;
+    if(row.type&&row.type!=='image')continue;
+    const count=Math.max(0,Math.min(10000,Number(row.count)||0));
+    if(count<1)continue;
+    const model={name:row.name.trim(),count,
+      queued:Math.max(0,Number(row.queued)||0),
+      eta:Math.max(0,Number(row.eta)||0),
+      performance:Math.max(0,Number(row.performance)||0),
+      nsfw:row.nsfw===true};
+    if(model.nsfw)continue;
+    const previous=byName.get(model.name);
+    if(!previous||model.count>previous.count)byName.set(model.name,model);
+  }
+  return [...byName.values()].sort((a,b)=>b.count-a.count||a.queued-b.queued||a.name.localeCompare(b.name));
+}
+async function fetchHordeModels({force=false,signal}={}){
+  if(!force&&hordeModelCache.models.length&&Date.now()-hordeModelCache.at<HORDE_MODEL_CACHE_MS)
+    return hordeModelCache.models;
+  if(hordeModelCache.promise)return hordeModelCache.promise;
+  const promise=(async()=>{
+    const data=await hordeJson(HORDE_IMAGE_API+'/status/models?type=image',{
+      headers:{'Client-Agent':HORDE_CLIENT_AGENT},signal});
+    const models=hordeNormaliseModels(data);
+    if(!models.length)throw new Error('There are no currently available compatible image workers.');
+    hordeModelCache={at:Date.now(),models,promise:null};
+    return models;
+  })();
+  hordeModelCache.promise=promise;
+  try{return await promise;}
+  finally{if(hordeModelCache.promise===promise)hordeModelCache.promise=null;}
+}
+async function fetchHordeModelReference(name,signal){
+  const entry=hordeReferenceCache.get(name);
+  if(entry&&Date.now()-entry.at<HORDE_MODEL_REFERENCE_MS)return entry.record;
+  let record=null;
+  try{
+    const response=await fetch(HORDE_MODEL_REFERENCE_API+encodeURIComponent(name),{
+      cache:'default',mode:'cors',signal,headers:{Accept:'application/json'}});
+    if(response.ok){
+      const raw=await response.json();
+      if(raw&&typeof raw==='object'&&!Array.isArray(raw))record=raw;
+    }
+  }catch(error){
+    if(signal?.aborted)throw error;
+    diagLog('normal','horde-model-reference-unavailable',{
+      model:name,reason:String(error.message||error).slice(0,130)});
+  }
+  hordeReferenceCache.set(name,{record,at:Date.now()});
+  if(hordeReferenceCache.size>80)hordeReferenceCache.delete(hordeReferenceCache.keys().next().value);
+  return record;
+}
+function hordeStyleFromPrompt(prompt){
+  const t=String(prompt||'').toLowerCase();
+  if(/\b(anime|manga|cel.shaded|chibi)\b/.test(t))return 'anime';
+  if(/\b(pixel art|8.bit|16.bit|sprite|retro game)\b/.test(t))return 'pixel_art';
+  if(/\b(photo|photograph|photoreal|realistic portrait|dslr|camera lens)\b/.test(t))return 'photographic';
+  if(/\b(fantasy|dragon|wizard|magical)\b/.test(t))return 'fantasy';
+  if(/\b(cartoon|illustration|comic|watercolour|watercolor|storybook)\b/.test(t))return 'illustration';
+  return 'digital_art';
+}
+function hordeModelFamily(name,baseline=''){
+  const x=(String(name)+' '+String(baseline)).toLowerCase();
+  if(/(flux|schnell|dev fp8)/.test(x))return 'flux';
+  if(/(turbo|lightning|lcm|hyper.sd)/.test(x))return 'fast';
+  if(/(sdxl|stable.diffusion.xl|xl\b|pony|illustrious|noobai)/.test(x))return 'sdxl';
+  if(/(sd.?1[. -]?5|stable.diffusion.1)/.test(x))return 'sd15';
+  return 'unknown';
+}
+function scoreHordeModel(model,{style,quality,model_hint}={}){
+  const name=model.name.toLowerCase(),hint=String(model_hint||'').toLowerCase().trim();
+  const family=hordeModelFamily(name);
+  let score=Math.log2(1+model.count)*4
+    -Math.min(25,model.queued/Math.max(1,model.count))*0.7
+    -Math.min(22,model.eta/110);
+  if(family==='sdxl')score+=17;
+  if(family==='flux')score+=18;
+  if(family==='sd15')score+=2;
+  if(family==='fast')score+=(quality==='fast'?17:-8);
+  if(quality==='quality'&&family==='sdxl')score+=5;
+  if(quality==='quality'&&family==='fast')score-=10;
+  if(style==='photographic'){
+    if(/(realistic|realism|photo|juggernaut|dreamshaper|flux)/.test(name))score+=17;
+    if(/anime|pony|cartoon/.test(name))score-=12;
+  }else if(style==='anime'){
+    if(/anime|manga|pony|illustrious|noobai/.test(name))score+=19;
+    if(/realistic|photograph/.test(name))score-=12;
+  }else if(style==='pixel_art'){
+    if(/pixel|sprite|retro/.test(name))score+=25;
+  }else if(style==='fantasy'){
+    if(/fantasy|dream|epic|juggernaut/.test(name))score+=11;
+  }else if(style==='illustration'||style==='digital_art'){
+    if(/illustrat|art|dreamshaper|fantasy/.test(name))score+=9;
+  }
+  if(hint&&name===hint)score+=100;
+  else if(hint&&hint.length>=3&&name.includes(hint))score+=25;
+  if(quality==='fast')score+=Math.max(0,12-Math.min(12,model.eta/20));
+  return score;
+}
+function hordeDimensions(size,aspect){
+  const base=[512,768].includes(Number(size))?Number(size):512;
+  if(aspect==='portrait')return base===512?{width:384,height:640}:{width:640,height:896};
+  if(aspect==='landscape')return base===512?{width:640,height:384}:{width:896,height:640};
+  return {width:base,height:base};
+}
+function hordeSamplingForModel(name,reference,preferences={}){
+  const requirements=reference?.requirements&&typeof reference.requirements==='object'
+    ?reference.requirements:{};
+  const family=hordeModelFamily(name,reference?.baseline);
+  const quality=preferences.quality||'balanced';
+  const fast=quality==='fast',best=quality==='quality';
+  let steps=family==='flux'?4:family==='fast'?6:family==='sdxl'?(fast?18:best?32:26):fast?16:best?30:23;
+  let cfgScale=family==='flux'||family==='fast'?1:family==='sdxl'?6:7;
+  const range=requirements.range_steps;
+  const goodRange=Array.isArray(range)&&range.length===2&&range.every(n=>Number.isFinite(n)&&n>=1);
+  if(goodRange){
+    const low=Math.min(range[0],range[1]),high=Math.max(range[0],range[1]);
+    steps=fast?low:best?high:Math.round((low+high)/2);
+  }
+  if(typeof requirements.cfg_scale==='number'&&Number.isFinite(requirements.cfg_scale))
+    cfgScale=requirements.cfg_scale;
+  if(Number.isInteger(preferences.steps)){
+    steps=goodRange?Math.max(Math.min(range[0],range[1]),Math.min(Math.max(...range),preferences.steps)):preferences.steps;
+  }
+  if(Number.isFinite(preferences.cfg_scale)&&preferences.cfg_scale>=0)
+    cfgScale=preferences.cfg_scale;
+  steps=Math.max(1,Math.min(40,Math.round(steps)));
+  cfgScale=Math.max(0,Math.min(15,Number(cfgScale.toFixed(2))));
+  const allowedSamplers=Array.isArray(requirements.samplers)
+    ?requirements.samplers.filter(v=>typeof v==='string'&&/^k_[a-z0-9_]{2,40}$/.test(v)):[];
+  const desired=preferences.sampler_name;
+  const sampler=allowedSamplers.includes(desired)?desired:allowedSamplers[0]||null;
+  const schedulers=Array.isArray(requirements.schedulers)?requirements.schedulers:[];
+  const karras=schedulers.includes('karras')?true:schedulers.includes('normal')?false:null;
+  const clipSkip=Number.isInteger(requirements.clip_skip)&&requirements.clip_skip>=1&&requirements.clip_skip<=3?
+    requirements.clip_skip:null;
+  return {steps,cfgScale,sampler,karras,clipSkip,
+    recommendation:reference?'model reference':'model-family defaults'};
+}
+async function resolveHordeGeneration(prompt,settings={},preferences={},signal,onPhase=()=>{}){
+  const size=[512,768].includes(Number(settings.size))?Number(settings.size):512;
+  const requested={...preferences,
+    quality:['fast','balanced','quality'].includes(preferences.quality)?preferences.quality:
+      ['fast','balanced','quality'].includes(settings.quality)?settings.quality:'balanced'};
+  const style=['photographic','illustration','anime','pixel_art','fantasy','digital_art'].includes(requested.style)
+    ?requested.style:hordeStyleFromPrompt(prompt);
+  const aspect=['square','portrait','landscape'].includes(requested.aspect_ratio)
+    ?requested.aspect_ratio:'square';
+  const dims=hordeDimensions(size,aspect);
+  const basic=()=>({prompt,params:{...hordeDimensions(size,'square'),steps:20,n:1},
+    nsfw:false,censor_nsfw:true,r2:false,shared:false});
+  if(settings.mode==='basic')
+    return {payload:basic(),details:{mode:'basic',style,quality:'basic',source:'original defaults',
+      width:size,height:size,steps:20,model:null}};
+  let available;
+  try{
+    onPhase('Finding available AI Horde image models…');
+    available=await fetchHordeModels({signal});
+  }catch(error){
+    if(signal?.aborted)throw error;
+    diagLog('normal','horde-model-discovery-fallback',{reason:String(error.message||error).slice(0,160)});
+    onPhase('Model discovery unavailable · using original settings');
+    return {payload:basic(),details:{mode:'basic',source:'discovery unavailable',fallback:true,
+      width:size,height:size,steps:20,model:null}};
+  }
+  const pinned=String(settings.model||'auto');
+  const exactPinned=available.find(x=>x.name===pinned);
+  const chosen=exactPinned||[...available].sort((a,b)=>
+    scoreHordeModel(b,{...requested,style})-scoreHordeModel(a,{...requested,style}))[0];
+  if(!chosen)throw new Error('No compatible AI Horde image models available.');
+  onPhase('Selected '+chosen.name+' · checking model recommendations…');
+  const reference=await fetchHordeModelReference(chosen.name,signal);
+  // Do not submit checkpoints explicitly marked NSFW by the reference.
+  if(reference?.nsfw===true){
+    const other=available.find(m=>m.name!==chosen.name&&m.nsfw!==true);
+    if(!other)return {payload:basic(),details:{mode:'basic',source:'model safety fallback',fallback:true,
+      width:size,height:size,steps:20,model:null}};
+    return resolveHordeGeneration(prompt,{...settings,model:other.name},preferences,signal,onPhase);
+  }
+  const sampled=hordeSamplingForModel(chosen.name,reference,requested);
+  const params={width:dims.width,height:dims.height,steps:sampled.steps,
+    cfg_scale:sampled.cfgScale,n:1};
+  if(sampled.sampler)params.sampler_name=sampled.sampler;
+  if(sampled.karras!==null)params.karras=sampled.karras;
+  if(sampled.clipSkip!==null)params.clip_skip=sampled.clipSkip;
+  if(typeof preferences.seed==='string'&&/^\d{1,15}$/.test(preferences.seed))
+    params.seed=preferences.seed;
+  const negative=typeof preferences.negative_prompt==='string'
+    ?preferences.negative_prompt.replace(/###/g,' ').trim().slice(0,600):'';
+  const body={prompt:prompt.trim().replace(/###/g,' ')+(negative?'###'+negative:''),
+    models:[chosen.name],params,nsfw:false,censor_nsfw:true,r2:false,shared:false};
+  return {payload:body,details:{mode:'smart',model:chosen.name,style,quality:requested.quality,
+    source:sampled.recommendation,workers:chosen.count,queued:chosen.queued,
+    width:params.width,height:params.height,steps:sampled.steps,cfgScale:sampled.cfgScale,
+    sampler:sampled.sampler,karras:sampled.karras,clipSkip:sampled.clipSkip,
+    negativePrompt:negative,seed:params.seed||null}};
+}
 function hordeGenerationPayload(prompt,size){
   if(typeof prompt!=='string'||!prompt.trim()||prompt.length>3000)
     throw new Error('Enter an image prompt between 1 and 3,000 characters.');
