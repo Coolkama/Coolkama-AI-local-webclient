@@ -3083,6 +3083,20 @@ async function listGeminiNativeModels(profile,trace){
 }
 function Settings({value,onChange,onClose,onOpenDiagnostics}) {
   const [settingsPage,setSettingsPage]=useState('home');
+  const [hordeModels,setHordeModels]=useState([]);
+  const [hordeDiscovery,setHordeDiscovery]=useState({loading:false,message:''});
+  async function discoverHordeModels(){
+    setHordeDiscovery({loading:true,message:'Loading available image models…'});
+    try{
+      const models=await fetchHordeModels({force:true});
+      setHordeModels(models);
+      setHordeDiscovery({loading:false,message:models.length+' models currently offered by volunteer workers.'});
+    }catch(error){
+      setHordeDiscovery({loading:false,message:'Discovery unavailable: '+String(error.message||error)+'. Basic fallback remains available.'});
+    }
+  }
+  const patchImageHorde=changes=>onChange(previous=>({...previous,
+    imageHorde:{...defaultImageHorde(),...(previous.imageHorde||{}),...changes}}));
   const sectionTitles={home:'Settings',provider:'AI provider',web:'Web search',images:'Image generation',advanced:'Advanced settings',safety:'Usage & safety'};
   const [showKey,setShowKey]=useState(false),[showSearchKey,setShowSearchKey]=useState(false);
   const [loadingModels,setLoadingModels]=useState(false);
@@ -3358,11 +3372,54 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
         <div className="border-t border-slate-800 pt-4 space-y-3">
           <div className="flex items-center justify-between gap-2"><strong className="text-sm text-lime-200 flex items-center gap-2"><Icon name="image" size={18}/> Images · AI Horde (FREE)</strong>
             <a href="https://aihorde.net/" target="_blank" rel="noopener noreferrer" className="text-xs text-lime-300 underline">AI Horde</a></div>
-          <p className="text-xs text-slate-300 leading-5">AI Horde uses free volunteer workers. Anonymous use requires no registration; a personal key is optional. Images can also be requested automatically by the chat model.</p>
+          <p className="text-xs text-slate-300 leading-5">AI Horde uses free volunteer workers. Anonymous use needs no registration. The model can propose style, aspect ratio and sampling preferences; the browser checks them before generating.</p>
           <div><label className="text-xs font-semibold text-slate-300">Personal Horde API key (optional)</label>
             <input className="field mt-2" type="password" autoComplete="off" placeholder="Empty = anonymous (no registration)"
               value={value.imageHorde?.key||''}
               onChange={e=>onChange(v=>({...v,imageHorde:{...v.imageHorde,key:e.target.value}}))}/>
+          </div>
+          <div className="rounded-xl border border-emerald-800/60 p-3 space-y-3 bg-emerald-950/15">
+            <label className="flex items-start gap-2 text-xs text-emerald-100">
+              <input type="checkbox" className="mt-0.5 accent-lime-500" checked={value.imageHorde?.mode!=='basic'}
+                onChange={e=>patchImageHorde({mode:e.target.checked?'smart':'basic'})}/>
+              <span><strong className="block text-sm text-lime-200">Intelligent image settings</strong>
+                Match an available AI Horde model to the requested style and use its recommended sampling settings where available.</span>
+            </label>
+            {value.imageHorde?.mode!=='basic'&&<>
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-2">Quality preference</label>
+                <select className="field" value={value.imageHorde?.quality||'balanced'}
+                  onChange={e=>patchImageHorde({quality:e.target.value})}>
+                  <option value="fast">Fast · favour shorter queues</option>
+                  <option value="balanced">Balanced · recommended</option>
+                  <option value="quality">Quality · potentially longer waits</option>
+                </select>
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                  <label className="text-xs font-semibold text-slate-300">Image model</label>
+                  <button type="button" className="text-xs text-lime-300 disabled:opacity-50"
+                    disabled={hordeDiscovery.loading} onClick={discoverHordeModels}>
+                    {hordeDiscovery.loading?'Discovering…':'Discover live models'}
+                  </button>
+                </div>
+                <select className="field" value={value.imageHorde?.model||'auto'}
+                  onChange={e=>patchImageHorde({model:e.target.value})}>
+                  <option value="auto">Auto · match style and availability</option>
+                  {!!value.imageHorde?.model&&value.imageHorde.model!=='auto'&&
+                    !hordeModels.some(m=>m.name===value.imageHorde.model)&&
+                    <option value={value.imageHorde.model}>{value.imageHorde.model} · not checked live</option>}
+                  {hordeModels.slice(0,120).map(m=><option key={m.name} value={m.name}>
+                    {m.name} · {m.count} worker{m.count===1?'':'s'}
+                  </option>)}
+                </select>
+                {hordeDiscovery.message&&<p className="text-[11px] text-slate-300 mt-2" role="status">
+                  {hordeDiscovery.message}</p>}
+                <p className="text-[11px] text-slate-400 mt-2">Automatic choices are validated against active workers before each request. An unavailable model preference falls back to another available model.</p>
+              </div>
+            </>}
+            {value.imageHorde?.mode==='basic'&&<p className="text-xs text-slate-400">
+              Original request settings: unselected model, square image, 20 steps. Useful for comparing results.</p>}
           </div>
           <div><label className="text-xs font-semibold text-slate-300">Image size</label>
             <select className="field mt-2" value={value.imageHorde?.size||512}
