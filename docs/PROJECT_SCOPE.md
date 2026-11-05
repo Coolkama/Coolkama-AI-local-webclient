@@ -87,6 +87,15 @@ The browser client may directly call **AI Horde** to generate images from the us
 - Groq's HTTP 429 retry hints may use fractional millisecond notation (e.g. `899.999999ms`). Parse these correctly alongside seconds/minutes/hours, apply the existing bounded automatic wait policy, honour Stop/Abort, and never switch to paid services. If the wait policy ultimately cannot finish a researched answer, keep the already retrieved and traceable links visible with a clear incomplete-answer notice.
 - Do not mistake client arithmetic/context checks, source preservation or no-more-tools constraints for fact-checking. Keep the model accountable for its final text and citations.
 
+## Mobile Settings information architecture (5 November 2026)
+
+- Prefer a short Settings home screen for current provider/model, service configuration status and clear routes to AI provider, Web search, Images, Advanced, Usage & safety and Diagnostics; avoid an enormous single settings scroll. Make navigation and Back explicit on small screens.
+- Keep everyday provider/model changes and credentials in the AI provider subpage. Hide read-only cloud base URLs and lengthy provider/model discovery explanations under optional details; leave the editable local Ollama URL visible when Ollama is selected.
+- Keep all existing free-tier confirmations at their relevant setup points: LLM key declarations in AI provider, Tavily free Researcher declaration in Web search, and AI Horde third-party prompt/LAION acknowledgement in Images. Do not dismiss or pre-accept confirmations when reorganising UI.
+- Move verbose quotas, warning text, endpoint restrictions and privacy notes away from the default home screen without weakening them. The home screen should clearly disclose that local free-only enforcement cannot guarantee account-wide zero charges.
+- Keep context/output/prefill/temperature/system-prompt settings behind Advanced. Diagnostics remains a separate existing screen accessed directly from home.
+- Navigation must be display-only; preserve local settings persistence, existing provider URLs, model discovery and validation, source limits, free-only rules, request counters, AI Horde image settings and privacy consent, the mobile chat interface and four-second splash requirement. Recheck functional integration before marking a redesign complete.
+
 ## Generated visual placement and compact presentation (5 November 2026)
 
 - Treat successful browser-created Mermaid diagrams and AI Horde-generated images as **inline answer components** rather than end-of-message attachments. Ask tool-capable models to place each media item via a standalone `[[diagram]]` or `[[image]]` marker in final Markdown. Interleave the browser-rendered item with Markdown at that location.
