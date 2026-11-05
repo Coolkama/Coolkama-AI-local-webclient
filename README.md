@@ -4,6 +4,18 @@ A standalone, mobile-first, free-tier-first LLM chat and web-search client built
 
 > **Project requirements:** [Scope and guardrails](docs/PROJECT_SCOPE.md). Read these before making changes.
 
+## Smart AI Horde image generation (build v23)
+
+Image generation now uses **optional live model selection and model-aware sampling** instead of always letting Horde choose an unspecified model at a fixed 20 steps. Smart mode consults the official AI Horde image-model status endpoint for active workers and approximate queue availability. It selects for requested style (photo, anime, illustration, fantasy, pixel art or digital art) and speed/quality, then consults the public Horde Model Reference v2 endpoint for any published step ranges, CFG, samplers, schedulers and CLIP skip. When metadata is unavailable or blocked by CORS it uses conservative family-level values; when model discovery itself fails it falls back to the original working Basic request before submitting. Discovery requests are cached, time-limited and performed lazily (not at app startup).
+
+**Settings → Image generation** has a Smart/Basic toggle, Fast/Balanced/Quality selection and **Discover live models** action for choosing a specific active checkpoint, while preserving image size, optional key, consent and local quotas. A selected model takes precedence if active, otherwise a compatible alternative is chosen. **Basic** retains the previous square 20-step no-model request for comparison.
+
+The model-owned **generate_image** tool now optionally accepts a negative prompt, style, aspect ratio, quality, model hint, steps, CFG, sampler and numeric seed. The browser validates and bounds these preferences rather than blindly trusting a model ID or a proposed sampler. Model-reference guidance takes priority for sensitive fast-model steps and CFG. Portrait and landscape sizes are aligned to multiples of 64; requests are capped by the selected 512/768 image-size setting. The existing one-image limit, safe-content flags, free-use caps, and explicit volunteer-worker/LAION privacy acknowledgement remain in effect. Image generation uses Horde's positive/negative prompt separator, and keeps the existing R2-disabled Blob/IndexedDB download behaviour.
+
+The actual resulting model, seed, dimensions, steps and other resolved settings are saved on the image. Open **three-dot menu → Generation details** to inspect them. Comparing Basic and Smart mode is encouraged, though results can vary between workers even with matching seeds. Check Diagnostics for model-discovery and metadata-reference fallback messages if a selection seems unexpected.
+
+**Testing:** syntax validation, strict image-argument tests, model selection and family-sampling tests, and an end-to-end mocked Horde async request/poll/result all passed. Live AI Horde CORS availability, Android rendering and whether these settings improve image output require user-side testing.
+
 ## Settings redesigned for mobile (build v22)
 
 Settings now opens on a **small, focused home screen** instead of immediately displaying every control in one long scroll. It shows the currently selected provider and model, simple configuration states for Web search and AI Horde images, and direct entries to **AI provider**, **Web search**, **Image generation**, **Advanced settings**, **Usage & safety**, and **Diagnostics**. Subpages have a clear Back button and the usual Done/close control. Navigation is local UI state; configuration changes still use the existing autosaved settings store.
