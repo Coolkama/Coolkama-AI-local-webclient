@@ -367,7 +367,7 @@
 <div id="root"></div>
 <script type="text/babel">
 const {useState, useEffect, useLayoutEffect, useRef, useMemo} = React;
-const APP_BUILD = '2026-11-05-settings-redesign-v22';
+const APP_BUILD = '2026-11-05-settings-startup-fix-v22-1';
 const SIDEBAR_ROBOT_IMAGE=window.__tightArseSidebarRobot||'';
 const STORAGE_KEY = 'llm-workbench-v1';
 const USAGE_KEY = 'llm-workbench-free-only-usage-v1';
@@ -3045,7 +3045,7 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
               <Icon name="chevron" size={18} className="text-emerald-300"/>
             </button>
           </div>
-        </div>
+        </div>}
         {settingsPage==='safety'&&<div className="space-y-4">
         <div className="rounded-xl border-2 border-amber-500/70 bg-amber-950/40 p-3 text-xs text-amber-100 leading-5">
           <strong className="block text-sm mb-1">NO PAID REQUESTS — IMPORTANT</strong>
