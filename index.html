@@ -1788,6 +1788,9 @@ function groqLocalMinuteWait(){
 function isGroqRateLimit(error){
   return error?.status===429||error?.code==='rate_limit_exceeded';
 }
+function isGroqOversizedRequest(error){
+  return error?.status===413&&/request too large|tokens per minute|\btpm\b/i.test(String(error.message||''));
+}
 // Provider-specific capabilities are deliberately isolated from the shared
 // conversation/streaming loop. Keep the free-only endpoint/model protections.
 const PROVIDER_REQUEST_ADAPTERS=Object.freeze({
@@ -2225,7 +2228,8 @@ async function saveHordeImage(image){
 
 async function streamChatWithRateWait(options,onReserved=()=>{}){
   const {provider,signal,trace={}}=options;
-  let providerRetries=0,localWaits=0;
+  let providerRetries=0,localWaits=0,oversizedRetries=0;
+  let requestOptions=options;
   while(true){
     if(signal?.aborted)throw new DOMException('Stopped','AbortError');
     try{
@@ -2245,11 +2249,31 @@ async function streamChatWithRateWait(options,onReserved=()=>{}){
     }
     let streamed=false;
     try{
-      return await streamChat({...options,onToken:text=>{
+      return await streamChat({...requestOptions,onToken:text=>{
         if(text)streamed=true;
         options.onToken?.(text);
       }});
     }catch(error){
+      if(provider==='groq'&&isGroqOversizedRequest(error)&&!streamed&&oversizedRetries<1){
+        // 413 is not temporary throttling: this single request cannot fit
+        // Groq's tokens/minute ceiling, so a sleep/retry would never help.
+        // Trim it once more, preserving user turn and tool-call/result pairing.
+        const previousEstimate=requestOptions.messages.reduce(
+          (sum,m)=>sum+contextMessageTokens(m),0);
+        const target=Math.max(2048,Math.min(3800,Math.floor(previousEstimate*0.65)));
+        const slimmer=rollContextMessages(requestOptions.messages,
+          {...options.profile,contextTokens:target},{provider:'groq'});
+        if(slimmer.stats.exceedsBudget||slimmer.stats.estimatedTokens>=previousEstimate)
+          throw error;
+        requestOptions={...requestOptions,messages:slimmer.messages};
+        oversizedRetries++;
+        diagLog('normal','groq-oversized-context-retry',{
+          beforeEstimate:previousEstimate,afterEstimate:slimmer.stats.estimatedTokens,
+          targetBudget:slimmer.stats.budget,attempt:oversizedRetries
+        },trace);
+        options.onContextResize?.(slimmer.stats);
+        continue;
+      }
       if(provider!=='groq'||!isGroqRateLimit(error)||streamed||
          providerRetries>=MAX_GROQ_RATE_RETRIES)throw error;
       const delay=groqRetryDelay(error);
@@ -3409,7 +3433,10 @@ function App() {
           try {
             response=await streamChatWithRateWait({provider,profile:config,temperature:settings.temperature,messages:requestMessages,signal:controller.signal,onToken:roundToken,onSources:addSources,
               onReasoning:progress=>patchAssistant({reasoningProgress:progress}),
-              toolsEnabled:canUseBrowserTools,toolDefinitions:availableTools,finalOnly:finalOnlyResearch,trace:roundCtx},()=>setUsageRevision(v=>v+1));
+              toolsEnabled:canUseBrowserTools,toolDefinitions:availableTools,finalOnly:finalOnlyResearch,
+              onContextResize:stats=>{patchAssistant({contextWindow:stats});
+                status('Groq request exceeded its token limit · retrying with smaller context…');},
+              trace:roundCtx},()=>setUsageRevision(v=>v+1));
           }catch(error){
             // A rare Groq streaming 429 can arrive after partial visible text.
             // Never replay the same request (which would duplicate tokens); instead
