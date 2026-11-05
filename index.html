@@ -2716,6 +2716,7 @@ function DiagramPreview({diagram}){
   </figure>;
 }
 function GeneratedImageSlot({message,imageAsset,onApproveImage,canApproveImage=false}){
+  const [showGeneration,setShowGeneration]=useState(false);
   const result=message.imageResult;
   if(result)return <figure className="my-3 min-w-0 max-w-full">
     <div className="relative min-w-0">
@@ -2735,11 +2736,25 @@ function GeneratedImageSlot({message,imageAsset,onApproveImage,canApproveImage=f
           </a>:null}
         {imageAsset.src&&<a className={MEDIA_MENU_ITEM} href={imageAsset.src}
           target="_blank" rel="noopener noreferrer"><Icon name="eye" size={15}/> Open original</a>}
+        <button type="button" className={MEDIA_MENU_ITEM}
+          onClick={()=>setShowGeneration(v=>!v)}>
+          <Icon name="settings" size={15}/> {showGeneration?'Hide settings':'Generation details'}
+        </button>
         <p className="px-3 py-2 text-[10px] text-emerald-300 border-t border-emerald-700/40">
-          AI Horde · {result.model} · {result.size} × {result.size}
+          AI Horde · {result.model} · {result.width||result.size} × {result.height||result.size}
         </p>
       </MediaOptions>
     </div>
+    {showGeneration&&<div className="mt-2 rounded-lg border border-emerald-700/40 bg-emerald-950/30 p-3 text-xs text-slate-200 space-y-1">
+      <p className="font-semibold text-lime-200">Image generation settings</p>
+      <p className="break-words">Model: {result.model||'Horde-selected'}</p>
+      <p>Mode: {result.generation?.mode||'Original'} · {result.generation?.quality||'Basic'} · {result.generation?.style||'Unspecified'}</p>
+      <p>Size: {result.width||result.size} × {result.height||result.size} · Steps: {result.generation?.steps??'20 (original)'}</p>
+      {result.generation?.cfgScale!=null&&<p>CFG: {result.generation.cfgScale} · Sampler: {result.generation.sampler||'Horde default'}</p>}
+      {result.generation?.karras!=null&&<p>Karras: {result.generation.karras?'Yes':'No'}</p>}
+      {!!result.seed&&<p className="break-all">Seed: {result.seed}</p>}
+      <p className="text-[11px] text-slate-400">Settings source: {result.generation?.source||'Original defaults'}. Worker availability and model versions may differ between runs.</p>
+    </div>}
     {result.storageWarning&&<p className="text-[11px] text-amber-200 mt-2">{result.storageWarning}</p>}
   </figure>;
   if(message.imageConsentRequest)return <div className="my-3 rounded-lg border border-amber-600/60 bg-amber-950/20 p-3 space-y-2 text-xs text-amber-100">
