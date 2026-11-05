@@ -4,6 +4,16 @@ A standalone, mobile-first, free-tier-first LLM chat and web-search client built
 
 > **Project requirements:** [Scope and guardrails](docs/PROJECT_SCOPE.md). Read these before making changes.
 
+## Groq 413 oversized-input and mobile table fixes (build v19)
+
+On 5 November 2026, an Android Chrome screenshot showed Groq returning **HTTP 413** (*request too large for model*) with an observed **8,000 token-per-minute ceiling** and **8,268 requested tokens**. Our earlier rolling context targeted **8,192 estimated input tokens**, leaving almost no margin for provider tokenisation differences, system/tool overhead and other free-tier limits. This is different from transient Groq HTTP **429** rate limiting; simply waiting cannot solve an individual oversized request.
+
+For free **Groq** requests, v19 now imposes a **6,000-estimated-token effective input ceiling**, even if the saved Settings selector is higher, leaving a safety margin without deleting or rewriting locally stored conversations. The rolling context still keeps recent user turns and matched tool-call/result structures where possible, trimming oversized older evidence. Other providers retain their chosen input context. The Settings note explains the effective Groq ceiling. If a Groq request still gets an oversized-input `413`, the browser will **shrink that request once more** (approximately 3,800 estimated tokens or less) and retry once, with a diagnostic event `groq-oversized-context-retry`. This reattempt uses the ordinary conservative free-use counter. If the request still cannot fit, the error remains visible. HTTP `429` continues to use the separate bounded retry/wait policy.
+
+The screenshot also showed a two-column factual Markdown profile table with its value column hidden beyond the mobile screen. At phone widths (up to 680px), two-column answer tables now wrap long text within the available width, showing both labels and values. Tables with three or more columns retain horizontal scrolling.
+
+Code syntax checks, rolling-context tests with multiple 18K-character tool results, and a simulated Groq 413 reduction-and-retry all passed. Android Chrome rendering and live Groq response handling still require testing.
+
 ## Research-loop and Groq millisecond rate-limit fixes (build v18)
 
 A 5 November 2026 conversation diagnostic exposed a failure on a follow-up about a Michigan public-health doctor. A normal greeting and two manual Retry clicks worked, then web research successfully found and opened results. A later research question used **three Tavily searches and three unique page opens** but continued issuing extra `web_open` calls for already cached pages after that budget had been consumed. The accumulated tool history grew to the configured ~8K input-context budget, caused repeated Groq token-per-minute `429` responses, and ultimately failed without a final answer.
