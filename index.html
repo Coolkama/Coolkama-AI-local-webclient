@@ -3046,10 +3046,14 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
             </button>
           </div>
         </div>
+        {settingsPage==='safety'&&<div className="space-y-4">
         <div className="rounded-xl border-2 border-amber-500/70 bg-amber-950/40 p-3 text-xs text-amber-100 leading-5">
           <strong className="block text-sm mb-1">NO PAID REQUESTS — IMPORTANT</strong>
           The app blocks paid model IDs, billable hosted search and automatic paid fallback. It stops at conservative local usage caps. <strong>However, it cannot inspect your provider billing plan, other devices or account-wide usage, so the browser alone CANNOT guarantee zero charges.</strong> Use ONLY free accounts/projects with no billing enabled and no automatic top-ups. Do not upgrade or attach a payment method.
         </div>
+        </div>}
+        {settingsPage==='provider'&&<div className="space-y-4">
+          <p className="text-xs text-slate-400 leading-5">Choose your AI provider and model. Your API key and free-tier declaration are saved locally.</p>
         <div><label className="block text-xs font-semibold text-slate-300 mb-2">Provider</label><div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{Object.entries(PROVIDERS).map(([id,p])=><button key={id} onClick={()=>{patch({provider:id});setModelError('');}} className={`text-left px-3 py-2.5 rounded-xl border text-sm ${provider===id?'bg-lime-600/20 border-lime-500 text-lime-100':'bg-slate-900 border-slate-700 text-slate-300'}`}>{p.name}</button>)}</div></div>
         <div className="rounded-xl p-3 bg-slate-900 border border-slate-800 text-xs leading-5 text-slate-400">{info.help} {info.keyUrl&&<a className="inline-flex items-center gap-1 text-lime-300 underline" href={info.keyUrl} rel="noopener noreferrer" target="_blank">{provider==='ollama'?'Get Ollama':'Get an API key'} <Icon name="arrow" size={12}/></a>}</div>
         {provider!=='demo'&&<>
@@ -3072,11 +3076,15 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
           <p className="text-[11px] text-emerald-300 leading-5">Custom paid model IDs are disabled. OpenRouter discovery requires zero pricing and a <code>:free</code> variant; with Web enabled it also requires advertised tool support. Groq/Gemini discovery uses free-tier allowlists; Ollama models run locally.</p>
           {modelError&&<p className="text-xs text-amber-300 mt-1">{modelError}</p>}
         </div>
+        </div>}
+        {settingsPage==='safety'&&<div className="space-y-4">
         <div className="quota-card space-y-2"><div className="flex flex-wrap justify-between items-center gap-2"><strong className="text-xs text-emerald-300">Free plan limits &amp; local safety counters</strong><a className="text-xs underline text-lime-300" href={FREE_LINKS[provider]||FREE_LINKS.openrouter} target="_blank" rel="noopener noreferrer">{FREE_LINKS[provider]?'Official limits ↗':'View free limits ↗'}</a></div>
           <p className="text-xs text-slate-300 leading-5">{FREE_DETAILS[provider]}</p>
           {LOCAL_CAPS[provider]&&<Quota provider={provider}/>}
           <p className="text-[11px] text-slate-500">Counters are based ONLY on requests from this browser. Failed requests still count. They do not reflect other apps/devices, actual provider token usage, or remaining account quota. Changing browser data can reset them.</p>
         </div>
+        </div>}
+        {settingsPage==='images'&&<div className="space-y-4">
         <div className="border-t border-slate-800 pt-4 space-y-3">
           <div className="flex items-center justify-between gap-2"><strong className="text-sm text-lime-200 flex items-center gap-2"><Icon name="image" size={18}/> Images · AI Horde (FREE)</strong>
             <a href="https://aihorde.net/" target="_blank" rel="noopener noreferrer" className="text-xs text-lime-300 underline">AI Horde</a></div>
@@ -3101,6 +3109,9 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
           <Quota provider="horde"/>
           <p className="text-[11px] text-slate-500">Local cap: 2 submissions/minute, 20/day. Queue polling doesn't consume more submissions. No paid image APIs or automatic credit purchases.</p>
         </div>
+        </div>}
+        {settingsPage==='web'&&<div className="space-y-4">
+          <p className="text-xs text-slate-400 leading-5">Search is optional. Tavily is the only supported hosted search service.</p>
         <div className="border-t border-slate-800 pt-4 space-y-3">
           <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 font-semibold text-sm"><Icon name="globe" size={17} className="text-lime-300"/> Web search · FREE only</div><label className="flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" className="accent-lime-500 h-4 w-4" checked={!!value.search.enabled} onChange={e=>patchSearch({enabled:e.target.checked})}/> Default on</label></div>
           <p className="text-xs leading-5 text-amber-200">OpenRouter hosted search was REMOVED because even a free AI model can trigger separately billable searches. Only Tavily FREE Researcher basic search is allowed. No paid-search fallback.</p>
@@ -3111,6 +3122,9 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
           <Quota provider="tavily"/>
           <p className="text-[11px] text-amber-200 leading-5">{FREE_DETAILS.tavily} The workbench supplies the current browser date, and recent-news searches may add a Basic search publication-date filter without additional credits. Citation checks flag links absent from retrieved evidence, but cannot independently fact-check every claim. The AI selects search queries from the conversation using function calling. <strong>Search queries are sent to Tavily and may contain details from your conversation.</strong> Some free models do not support tools; select a tool-capable model if your provider rejects the request. No chargeable search plugins or paid fallback.</p>
         </div>
+        </div>}
+        {settingsPage==='advanced'&&<div className="space-y-4">
+          <p className="text-xs text-slate-400 leading-5">Most users can leave these settings unchanged. They affect how requests are sent, not your saved chat history.</p>
         <div><label className="block text-xs font-semibold text-slate-300 mb-2">Rolling context window (approximate input tokens)</label>
           <select className="field" value={contextInputLimit(profile)} onChange={e=>patchProfile({contextTokens:Number(e.target.value)})}>
             {CONTEXT_WINDOW_CHOICES.map(n=><option key={n} value={n}>{n.toLocaleString('en-GB')} estimated tokens</option>)}
@@ -3144,8 +3158,10 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
         </label>
         <div><div className="flex justify-between mb-2"><label className="text-xs font-semibold text-slate-300">Temperature</label><span className="text-xs text-lime-300 font-mono">{Number(value.temperature).toFixed(2)}</span></div><input type="range" min="0" max="2" step="0.05" className="w-full accent-lime-500" value={value.temperature} onChange={e=>patch({temperature:Number(e.target.value)})}/></div>
         <div><label className="block text-xs font-semibold text-slate-300 mb-2">System instruction</label><textarea className="field min-h-24" value={value.systemPrompt} onChange={e=>patch({systemPrompt:e.target.value})}/></div>
-        <div className="rounded-xl border border-slate-700 p-3 flex gap-3 justify-between items-center"><div><strong className="text-sm">Diagnostics</strong><p className="text-xs text-slate-400 mt-1">Local event trace, model metadata, tool history and JSON exports</p></div><button className="btn btn-soft shrink-0" onClick={onOpenDiagnostics}>Open logs</button></div>
+        </div>}
+        {settingsPage==='safety'&&<div className="space-y-4">
         <p className="text-xs leading-5 text-amber-200/80 border-t border-slate-800 pt-4"><strong>Privacy:</strong> API keys, images and messages live in localStorage, which is not encrypted. Browser extensions and scripts running on this page can access them. Use a trusted device and restricted keys; do not enter secrets or confidential documents into public free models. Browsers can block cross-origin requests or HTTP endpoints on HTTPS pages.</p>
+        </div>}
       </div>
       <div className="p-4 border-t border-slate-800"><button className="btn btn-primary w-full" onClick={onClose}>Done</button></div>
     </div>
