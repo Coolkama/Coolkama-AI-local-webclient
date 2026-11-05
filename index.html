@@ -323,6 +323,13 @@
   const MIN_SPLASH_MS=4000;
   const startedAt=performance.now();
   const splash=document.getElementById("launch-splash");
+  // Reuse the EXACT splash mascot in the conversation drawer. Capture a
+  // self-contained SVG data URI before the splash DOM is removed on startup.
+  // No second artwork, server request or separately maintained SVG copy.
+  const mascot=splash?.querySelector(".splash-art");
+  window.__tightArseSidebarRobot=mascot
+    ? "data:image/svg+xml;charset=utf-8,"+encodeURIComponent(mascot.outerHTML)
+    : "";
   let ready=false,closing=false;
   let slowTimer=null;
   const finish=()=>{
@@ -360,7 +367,8 @@
 <div id="root"></div>
 <script type="text/babel">
 const {useState, useEffect, useLayoutEffect, useRef, useMemo} = React;
-const APP_BUILD = '2026-11-05-groq-context-mobile-tables-v19';
+const APP_BUILD = '2026-11-05-sidebar-robot-brand-v20';
+const SIDEBAR_ROBOT_IMAGE=window.__tightArseSidebarRobot||'';
 const STORAGE_KEY = 'llm-workbench-v1';
 const USAGE_KEY = 'llm-workbench-free-only-usage-v1';
 // These are deliberately conservative CLIENT-ONLY stops, NOT the providers' real quotas.
@@ -3859,7 +3867,17 @@ function App() {
     {drawer&&<div className="fixed inset-0 z-20 bg-black/65 md:hidden" onClick={()=>setDrawer(false)}/>}
     <aside className={`fixed md:relative inset-y-0 left-0 z-30 w-[min(84vw,310px)] md:w-[280px] shrink-0 flex flex-col border-r border-slate-800 bg-slate-900 matrix-sidebar safe-top safe-bottom transform transition-transform duration-200 ${drawer?'translate-x-0':'-translate-x-full md:translate-x-0'}`}>
       <div className="px-4 pt-5 pb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2.5"><div className="w-9 h-9 rounded-xl bg-gradient-to-br from-lime-500 to-emerald-700 grid place-items-center shadow-lg shadow-lime-800/30"><Icon name="spark"/></div><div><div className="font-bold text-sm">Tight Arse AI</div><div className="text-[10px] uppercase tracking-[.18em] text-slate-500">Chat client</div></div></div>
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-12 h-12 shrink-0 rounded-xl border border-emerald-500/50 bg-[#06140e] grid place-items-center overflow-hidden shadow-lg shadow-emerald-600/20">
+            {SIDEBAR_ROBOT_IMAGE
+              ?<img src={SIDEBAR_ROBOT_IMAGE} alt="Tight Arse AI grumpy robot mascot" width="48" height="48" className="block w-full h-full object-contain p-0.5"/>
+              :<Icon name="spark" size={22}/>}
+          </div>
+          <div className="min-w-0">
+            <div className="font-bold text-sm leading-5 text-lime-100">Tight Arse AI</div>
+            <div className="text-[10px] leading-4 text-emerald-200/80">Maximum intelligence · Minimum spend</div>
+          </div>
+        </div>
         <button className="md:hidden text-slate-400 p-2" onClick={()=>setDrawer(false)} aria-label="Close drawer"><Icon name="x"/></button>
       </div>
       <button onClick={addChat} className="btn btn-primary mx-4 mb-5"><Icon name="plus" size={16}/> New conversation</button>
