@@ -2509,7 +2509,7 @@ function GeneratedImageSlot({message,imageAsset,onApproveImage,canApproveImage=f
 }
 // Keep clipboard content useful for both ordinary answers and diagram replies.
 function replyCopyText(message){
-  const text=String(message?.content||'').trim();
+  const text=String(message?.content||'').replace(/^\s*\[\[(?:diagram|image)\]\]\s*$/gim,'').trim();
   const source=message?.diagram?.code;
   return [text,typeof source==='string'&&source.trim()
     ?'Mermaid diagram: '+String(message.diagram.title||'Diagram')+'\n\x60\x60\x60mermaid\n'+source+'\n\x60\x60\x60':''].filter(Boolean).join('\n\n');
@@ -2529,7 +2529,7 @@ async function copyReplyText(text){
   }finally{field.remove();}
 }
 function readableReplyText(message){
-  let markdown=String(message?.content||'');
+  let markdown=String(message?.content||'').replace(/^\s*\[\[(?:diagram|image)\]\]\s*$/gim,'');
   markdown=markdown.replace(/\x60{3,}[\s\S]*?\x60{3,}/g,' Code block omitted. ');
   markdown=markdown.replace(/!\[([^\]]*)\]\([^)]*\)/g,' $1 image. ');
   markdown=markdown.replace(/https?:\/\/\S+/g,' web link ');
@@ -2605,6 +2605,10 @@ function Message({message,streaming,onContinue,canContinue=false,onApproveImage,
   const searchLog=message.searchLog||[],openLog=message.openLog||[],sources=message.sources||[];
   const hasWebActivity=!user&&(searchLog.length>0||openLog.length>0||sources.length>0||!!message.searchingWeb);
   const searching=!!message.searchingWeb&&streaming;
+  const mediaTypes=!user?[
+    ...(message.diagram?.code?['diagram']:[]),
+    ...((message.imageProvider==='horde'||message.imageResult||message.imageConsentRequest||message.imageError)?['image']:[])
+  ]:[];
   return <div className={`flex gap-3 md:gap-4 ${user?'flex-row-reverse':''}`}>
     <div className={`matrix-avatar ${user?'user-avatar':''} shrink-0 w-8 h-8 rounded-xl grid place-items-center text-xs font-bold`}>
       {user?'You':<Icon name="spark" size={16}/>}</div>
@@ -2638,48 +2642,16 @@ function Message({message,streaming,onContinue,canContinue=false,onApproveImage,
           <span>Model reasoning · {message.reasoningProgress.model||'selected free model'}</span>
           <span className="text-slate-400">{Number(message.reasoningProgress.chars||0).toLocaleString('en-GB')} reasoning characters received · awaiting answer</span>
         </div>}
-        {message.content ? (user?<div className="whitespace-pre-wrap break-words text-[14px] leading-7 text-slate-100">{message.content}</div>:<Markdown text={message.content}/>) : (streaming&&!message.reasoningProgress?<div className="flex gap-1 py-2">{[0,1,2].map(i=><span key={i} className="w-1.5 h-1.5 bg-lime-400 rounded-full stream-dot" style={{animationDelay:`${i*0.18}s`}}/>)}</div>:null)}
-        {!user&&message.imageProvider==='horde'&&(message.imagePending||
-          (message.status==='streaming'&&!message.imageResult&&!message.imageError&&!message.imageConsentRequest))&&
-          <div role="status" aria-live="polite" className="mt-3 rounded-xl border border-lime-700/70 bg-emerald-950/40 p-3 text-xs text-lime-100">
-            <p className="flex items-center gap-2 font-semibold"><Icon name="image" size={17}/> AI Horde · {message.imageStatus||(message.imageProgress?.working?'Generating image…':'Waiting for a volunteer worker…')}</p>
-            {message.imageProgress?.queue!=null&&<p className="mt-2">Queue position: {message.imageProgress.queue}</p>}
-            {message.imageProgress?.seconds!=null&&<p>Estimated wait: {message.imageProgress.seconds}s (approximate)</p>}
-            <p className="mt-1 text-slate-400">Keep the page open. Stop attempts to cancel the queued job.</p>
-          </div>}
-        {!user&&message.imageConsentRequest&&!message.imageResult&&<div className="mt-3 rounded-xl border border-amber-600/60 bg-amber-950/20 p-3 space-y-2 text-xs text-amber-100">
-          <p className="font-semibold flex items-center gap-2"><Icon name="image" size={16}/> AI Horde image needs your consent</p>
-          <p>Image prompts go to volunteer-run workers. Anonymous generations may be shared with LAION, even when sharing is disabled in the request. Do not submit confidential prompts.</p>
-          <p className="text-slate-300 break-words">Prompt: {message.imageConsentRequest.prompt}</p>
-          <button className="btn btn-primary" type="button" disabled={!canApproveImage}
-            onClick={()=>onApproveImage?.(message.id)}>I understand · Generate this image</button>
-          {!canApproveImage&&<p className="text-slate-400">Available when the current reply finishes.</p>}
-        </div>}
-        {!user&&message.imageError&&<p className="mt-3 text-xs text-rose-300">AI Horde · {message.imageError}</p>}
-        {!user&&message.imageResult&&<div className="mt-3 space-y-2">
-          {imageAsset.src?<a href={imageAsset.src} target="_blank" rel="noopener noreferrer" className="block" title="Open full generated image">
-            <img src={imageAsset.src} alt="Image generated by AI Horde" loading="lazy"
-              referrerPolicy="no-referrer" className="w-full max-w-lg h-auto rounded-xl border border-emerald-700/70"/>
-          </a>:<p className="text-xs text-amber-200">{imageAsset.error||'Loading generated image from browser storage…'}</p>}
-          <div className="flex flex-wrap gap-2">
-            {typeof message.imageResult.url==='string'&&message.imageResult.url.startsWith('https://')
-              ?<a className="btn btn-primary" href={message.imageResult.url}
-                  target="_blank" rel="noopener noreferrer">
-                  <Icon name="download" size={15}/> Open image to save
-                </a>
-              :imageAsset.src?<a className="btn btn-primary" href={imageAsset.src}
-                  download={'tight-arse-ai-'+String(message.imageResult.requestId||'image').slice(0,40)+'.webp'}>
-                  <Icon name="download" size={15}/> Download image
-                </a>:<span className="text-xs text-slate-400">Loading image for download…</span>}
-            {imageAsset.src&&<a className="btn btn-soft border border-emerald-700/70" href={imageAsset.src}
-              target="_blank" rel="noopener noreferrer">Open original</a>}
-          </div>
-          {message.imageResult.storageWarning&&<p className="text-[11px] text-amber-200">{message.imageResult.storageWarning}</p>}
-          <p className="text-[11px] text-slate-400">AI Horde · {message.imageResult.model} · {message.imageResult.size} × {message.imageResult.size} · {message.imageResult.storageId?'Stored in this browser; download to keep a separate copy.':'Remote image links may expire.'}</p>
-        </div>}
+        {(message.content||mediaTypes.length)?(user
+          ?<div className="whitespace-pre-wrap break-words text-[14px] leading-7 text-slate-100">{message.content}</div>
+          :inlineReplyParts(message.content,mediaTypes).map((part,i)=>
+            part.type==='text'?<Markdown key={'text-'+i} text={part.text}/>:
+            part.type==='diagram'?<DiagramPreview key={'diagram-'+i} diagram={message.diagram}/>:
+            <GeneratedImageSlot key={'image-'+i} message={message} imageAsset={imageAsset}
+              onApproveImage={onApproveImage} canApproveImage={canApproveImage}/>
+          )):(streaming&&!message.reasoningProgress?<div className="flex gap-1 py-2">{[0,1,2].map(i=><span key={i} className="w-1.5 h-1.5 bg-lime-400 rounded-full stream-dot" style={{animationDelay:`${i*0.18}s`}}/>)}</div>:null)}
         {!user&&message.diagramStatus&&<p className="mt-3 text-xs text-lime-200" role="status">{message.diagramStatus}</p>}
         {!user&&message.diagramError&&!message.diagram?.code&&<p className="mt-3 text-xs text-amber-200 break-words">{message.diagramError}</p>}
-        {!user&&message.diagram?.code&&<DiagramPreview diagram={message.diagram}/>} 
         {(message.attachments||[]).length>0&&<div className="flex flex-wrap gap-2 mt-2">{message.attachments.map(a=>a.type==='image'?<div key={a.id} className="relative"><img src={a.dataUrl} alt={a.name} title={a.name} className="w-24 h-24 md:w-32 md:h-32 object-cover rounded-xl border border-slate-600"/></div>:<div key={a.id} title={a.name} className="max-w-full flex items-center gap-1.5 text-xs text-slate-300 bg-slate-800 border border-slate-700 px-2.5 py-2 rounded-lg"><Icon name="file" size={15}/><span className="truncate max-w-44">{a.name}</span>{a.truncated&&<span className="text-amber-400">(partial)</span>}</div>)}</div>}
         {message.status==='error'&&<div className="mt-2 text-xs text-rose-400 break-words">{message.error||'Request failed'}</div>}
         {message.status==='stopped'&&<div className="mt-2 text-xs text-amber-400">Generation stopped</div>}
