@@ -4,6 +4,18 @@ A standalone, mobile-first, free-tier-first LLM chat and web-search client built
 
 > **Project requirements:** [Scope and guardrails](docs/PROJECT_SCOPE.md). Read these before making changes.
 
+## Guided free-provider setup with the grumpy robot (build v25)
+
+Settings now offers **Let the robot set it up**, an interactive five-stage onboarding wizard starring the **identical grumpy robot SVG** used by the launch splash and chat. On a browser without a configured confirmed hosted provider, the wizard opens automatically once (after the existing four-second splash); it can always be reopened from Settings, and the empty chat state provides a shortcut when provider configuration is missing.
+
+1. **Choose a provider**: OpenRouter, Groq, Google Gemini, Ollama Local or the offline Test Mode.
+2. **Get an account / install Ollama**: provider-specific instructions and links to the existing official key/download pages.
+3. **Enter a key or private endpoint**: masked key input; editing a hosted key clears its previous free-tier attestation. A hosted API key and explicit no-billing attestation are required to continue.
+4. **Select an approved model**: choose current free-only suggestions or already-vetted discovered model IDs; never insert paid IDs.
+5. **Test and finish**: explicit one-request direct browser test using the selected model and existing free-only enforcement/local request caps, with status/error feedback. An untested save is possible when a browser CORS restriction prevents verification, and is labelled unverified. A successful setup offers **Set up another free provider** or **Start chatting**.
+
+No wizard edits to live settings are committed until the final save. Completing a setup selects the provider and persists the profile using the existing localStorage settings path; dismissing midway leaves current settings unchanged. Existing provider models, endpoints, quotas, settings and startup splash behaviour are retained. Real key tests require an actual account and browser connectivity; live Android/Pages checks are still necessary.
+
 ## Splash-matched chat background and assistant mascot (build v24)
 
 The in-chat assistant avatar now reuses the **exact grumpy robot SVG** captured from the existing four-second launch splash, just as the sidebar already does. All assistant messages, including saved conversation history, use the same mascot without a separate asset or network request.
