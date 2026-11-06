@@ -48,6 +48,9 @@
       text-shadow: 0 0 24px #44ff9960; }
     .splash-tag { margin: 9px 0 33px; font-size: 10px; letter-spacing: .22em;
       text-transform: uppercase; color: #7bab8e; }
+    .wizard-robot-bob { animation: wizard-robot-bob 4s ease-in-out infinite; }
+    @keyframes wizard-robot-bob {0%,100%{transform:translateY(0) rotate(-1deg)}50%{transform:translateY(-5px) rotate(1deg)}}
+    @media (prefers-reduced-motion: reduce) {.wizard-robot-bob{animation:none}}
     .splash-progress { width: min(100%, 255px); height: 6px; position: relative;
       border: 1px solid #317446; border-radius: 99px; overflow: hidden;
       background: #092317; box-shadow: 0 0 16px #0deb5c15; }
@@ -368,7 +371,7 @@
 <div id="root"></div>
 <script type="text/babel">
 const {useState, useEffect, useLayoutEffect, useRef, useMemo} = React;
-const APP_BUILD = '2026-11-05-splash-backdrop-v24';
+const APP_BUILD = '2026-11-06-provider-wizard-v25';
 const SIDEBAR_ROBOT_IMAGE=window.__tightArseSidebarRobot||'';
 const STORAGE_KEY = 'llm-workbench-v1';
 const USAGE_KEY = 'llm-workbench-free-only-usage-v1';
@@ -3143,7 +3146,237 @@ async function listGeminiNativeModels(profile,trace){
   },trace);
   return all;
 }
-function Settings({value,onChange,onClose,onOpenDiagnostics}) {
+
+const WIZARD_GUIDES = {
+  openrouter:{
+    tagline:'The easiest route to a selection of free models.',
+    linkText:'Open OpenRouter API keys',
+    steps:['Sign in to OpenRouter (a free account is enough).','Keep your account free: do not buy credits or enable auto-recharge.','Create an API key and copy it. You will paste it into this wizard.'],
+    warning:'Only the free router or explicitly free model IDs are available in this app.'
+  },
+  groq:{
+    tagline:'Very fast inference, with a separate free allowance.',
+    linkText:'Open Groq API keys',
+    steps:['Sign in to the Groq Console.','Check that your organisation is on the Free plan, not a paid Developer plan.','Create a project API key and copy it.'],
+    warning:'Groq applies rate limits to your organisation. A free account does not mean unlimited requests.'
+  },
+  gemini:{
+    tagline:'Google AI Studio models using a free-tier project.',
+    linkText:'Open Google AI Studio API keys',
+    steps:['Sign in to Google AI Studio.','Choose or create a free-tier project with Cloud Billing NOT enabled.','Create an API key for that project and copy it.'],
+    warning:'Google offers free and paid quotas. A billing-linked project can charge even when a model offers free-tier usage.'
+  },
+  ollama:{
+    tagline:'Your own PC does the thinking. No hosted inference charges.',
+    linkText:'Get Ollama',
+    steps:['Install Ollama on the computer running your models.','Download a model, for example using ollama pull gemma4.','If using another device, securely configure the private LAN endpoint and browser CORS access.'],
+    warning:'On a phone, localhost means your phone, not your computer. HTTPS pages may block an insecure HTTP LAN address.'
+  },
+  demo:{
+    tagline:'See the chat interface work without any account or model.',
+    linkText:'',
+    steps:['No account to create.','No key to paste.','The app generates simulated streaming replies locally.'],
+    warning:'Test Mode is a simulator, not a real language model.'
+  }
+};
+function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
+  const [step,setStep]=useState(0);
+  const [draft,setDraft]=useState(()=>{
+    const id=value.provider;
+    const p=value.profiles[id]||freshProfiles()[id];
+    return {provider:id,key:p.key||'',url:p.url||PROVIDERS[id].url,
+      model:isApprovedModel(id,p.model)?p.model:PROVIDERS[id].model,
+      confirmed:!!value.freeTierConfirmed?.[id]};
+  });
+  const [showKey,setShowKey]=useState(false);
+  const [test,setTest]=useState({status:'idle',message:''});
+  const [saved,setSaved]=useState(false);
+  const [testedOnSave,setTestedOnSave]=useState(false);
+  const [testing,setTesting]=useState(false);
+  const info=PROVIDERS[draft.provider],guide=WIZARD_GUIDES[draft.provider];
+  const hosted=!['ollama','demo'].includes(draft.provider);
+  const labels=['Choose','Account','Key / connection','Model','Test'];
+  const stored=(value.discoveredModels?.[draft.provider]||[]).filter(id=>isApprovedModel(draft.provider,id));
+  const suggested=info.models.filter(([id])=>isApprovedModel(draft.provider,id));
+  const menu=stored.length?stored.map(id=>[id,id+' · discovered']):suggested;
+  const models=menu.some(([id])=>id===draft.model)?menu:[...menu,[draft.model,draft.model+' · selected']];
+  const sentences=[
+    'Fine. I will help you get AI working without selling a kidney.',
+    draft.provider==='demo'?'This one costs exactly nothing. It also thinks exactly nothing.':
+      'Use the official site. Do NOT let anyone talk you into a paid plan.',
+    hosted?'Paste the key here. I will not send it to any service except the provider you choose.':
+      draft.provider==='ollama'?'Point me at your private Ollama server. No cloud required.':'No key. No credit card. No excuses.',
+    'Pick a free model. The expensive ones are not invited.',
+    'Ready for a tiny test request? It uses your free quota, not a magic unlimited allowance.',
+    'There. Connected. Do not expect me to smile.'
+  ];
+  function choose(id){
+    const p=value.profiles[id]||freshProfiles()[id];
+    setDraft({provider:id,key:p.key||'',url:p.url||PROVIDERS[id].url,
+      model:isApprovedModel(id,p.model)?p.model:PROVIDERS[id].model,
+      confirmed:!!value.freeTierConfirmed?.[id]});
+    setTest({status:'idle',message:''});setShowKey(false);
+  }
+  function change(changes){setDraft(d=>({...d,...changes}));setTest({status:'idle',message:''});}
+  const allowed=step!==2||(hosted?!!draft.key.trim()&&draft.confirmed:true);
+  function saveConfiguration(){
+    // No changes are committed until Finish / Save without testing.
+    enforceFreeOnly(draft.provider,{...value.profiles[draft.provider],...draft},
+      {...value,freeTierConfirmed:{...value.freeTierConfirmed,[draft.provider]:draft.confirmed}});
+    onChange(current=>({...current,provider:draft.provider,
+      freeTierConfirmed:{...current.freeTierConfirmed,[draft.provider]:hosted?draft.confirmed:false},
+      profiles:{...current.profiles,[draft.provider]:{...current.profiles[draft.provider],
+        key:hosted?draft.key.trim():'',
+        url:draft.provider==='ollama'?draft.url.trim():PROVIDERS[draft.provider].url,
+        model:draft.model}}}));
+    setTestedOnSave(test.status==='ok');setSaved(true);setStep(5);
+  }
+  async function runTest(){
+    if(testing)return;
+    setTesting(true);setTest({status:'running',message:'Connecting directly to '+info.name+'…'});
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),30000);
+    try{
+      const p={...value.profiles[draft.provider],...draft};
+      enforceFreeOnly(draft.provider,p,{...value,
+        freeTierConfirmed:{...value.freeTierConfirmed,[draft.provider]:draft.confirmed}});
+      if(draft.provider==='demo'){
+        setTest({status:'ok',message:'The local demonstration mode is ready. No remote request was sent.'});
+        return;
+      }
+      // Every hosted test is a real inference request; count it before sending.
+      if(LOCAL_CAPS[draft.provider]){reserveFreeUse(draft.provider);onUsage?.();}
+      const body={model:draft.model,messages:[{role:'user',content:'Reply with exactly READY.'}],stream:false};
+      if(draft.provider==='groq'){
+        body.max_completion_tokens=128;
+        if(draft.model.startsWith('openai/gpt-oss-'))body.include_reasoning=false;
+      }else body.max_tokens=128;
+      const headers={'Content-Type':'application/json'};
+      if(hosted)headers.Authorization='Bearer '+draft.key.trim();
+      const response=await fetch(endpointUrl(p.url),{method:'POST',headers,
+        body:JSON.stringify(body),signal:controller.signal});
+      const raw=await response.text();
+      let data={};try{data=JSON.parse(raw)}catch{}
+      if(!response.ok){
+        const reason=String(data.error?.message||data.message||response.statusText||'Request rejected');
+        throw new Error('HTTP '+response.status+': '+reason.slice(0,250).replaceAll(draft.key.trim()||'\u0000','[key]'));
+      }
+      const answer=data.choices?.[0]?.message?.content;
+      if(typeof answer!=='string'||!answer.trim())
+        throw new Error('The API responded but returned no text. Try another free model.');
+      setTest({status:'ok',message:'Real model reply: '+answer.trim().slice(0,250)});
+    }catch(error){
+      const message=controller.signal.aborted?'Connection timed out after 30 seconds.':
+        error instanceof TypeError?'Browser could not reach the provider. Check your network, endpoint and CORS settings.':
+          String(error.message||error);
+      setTest({status:'error',message});
+    }finally{clearTimeout(timeout);setTesting(false);}
+  }
+  return <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-5" role="dialog" aria-modal="true" aria-label="Grumpy robot free AI setup wizard">
+    <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={testing?undefined:onClose}/>
+    <div className="relative flex flex-col w-full max-w-[650px] max-h-[96dvh] sm:max-h-[92dvh] overflow-hidden rounded-t-3xl sm:rounded-3xl border border-lime-600/40 bg-[#07100d] text-slate-100 shadow-2xl shadow-lime-950/50">
+      <div className="absolute inset-0 pointer-events-none opacity-20" style={{backgroundImage:'linear-gradient(110deg, transparent 40%, #194f34 41%, transparent 42%),linear-gradient(#63f28e17 1px, transparent 1px),linear-gradient(90deg,#63f28e15 1px,transparent 1px)',backgroundSize:'100% 100%,28px 28px,28px 28px'}}/>
+      <div className="relative px-4 sm:px-6 pt-4 pb-3 border-b border-lime-800/40 flex items-center justify-between gap-3">
+        <div><div className="text-[10px] uppercase tracking-[.27em] text-lime-400 font-bold">Tight Arse AI · Guided setup</div><h2 className="text-xl font-black text-lime-100">FREE AI. NO NONSENSE.</h2></div>
+        <button type="button" className="rounded-xl border border-emerald-800 p-2.5 hover:bg-emerald-950/80 text-slate-300 disabled:opacity-40" disabled={testing} onClick={onClose} aria-label="Close setup wizard"><Icon name="x" size={19}/></button>
+      </div>
+      <div className="relative px-4 sm:px-6 pt-3 pb-2">
+        <div className="grid grid-cols-5 gap-1.5">
+          {labels.map((label,i)=><button type="button" key={label} disabled={step===5||testing||i>step||saved} onClick={()=>setStep(i)}
+            className={'h-1.5 rounded-full '+(i<=step?'bg-lime-400':'bg-emerald-950 border border-emerald-800/50')}
+            title={'Step '+(i+1)+': '+label} aria-label={'Step '+(i+1)+': '+label}/>)}
+        </div>
+        <div className="flex justify-between mt-1.5 text-[10px] text-emerald-300/80"><span>{step===5?'SETUP COMPLETE':'STEP '+(step+1)+' OF 5'}</span><span>{step===5?'Done':labels[step]}</span></div>
+      </div>
+      <div className="relative overflow-y-auto thin-scroll flex-1 px-4 sm:px-6 pb-4">
+        <div className="flex items-center gap-3 my-2 sm:my-3">
+          <div className="relative shrink-0 h-[98px] w-[100px] sm:w-[138px] sm:h-[138px] overflow-hidden rounded-2xl bg-[#071a10] border border-lime-700/30 shadow-inner shadow-emerald-900/50">
+            {SIDEBAR_ROBOT_IMAGE?<img src={SIDEBAR_ROBOT_IMAGE} alt="Grumpy green Tight Arse AI robot" className="w-full h-full object-contain wizard-robot-bob" />:<Icon name="spark" size={38}/>}
+          </div>
+          <div className="relative flex-1 rounded-2xl rounded-bl-sm border border-emerald-700/65 bg-emerald-950/75 p-3 sm:p-4 shadow-lg">
+            <div className="text-[9px] text-lime-400 uppercase tracking-wider font-bold mb-1">Your extremely unwilling assistant</div>
+            <p className="text-sm sm:text-base text-lime-100 font-semibold leading-5 sm:leading-6" aria-live="polite">{sentences[step]}</p>
+          </div>
+        </div>
+        {step===0&&<div className="space-y-3">
+          <p className="text-sm text-slate-300">Choose a provider. We will guide you through its account, key, free-tier checks, model and a connection test.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {Object.entries(PROVIDERS).map(([id,p])=><button type="button" key={id} onClick={()=>choose(id)}
+              aria-pressed={draft.provider===id}
+              className={'text-left p-3 rounded-xl border transition-colors '+(draft.provider===id?'border-lime-400 bg-lime-600/15':'border-emerald-800/60 bg-slate-900/75 hover:border-emerald-500')}>
+              <div className="flex items-center justify-between gap-2"><strong className="text-sm text-lime-100">{p.name}</strong><span className={'text-xs '+(draft.provider===id?'text-lime-300':'text-slate-600')}>{draft.provider===id?'✓ Selected':'○'}</span></div>
+              <p className="text-xs leading-5 text-slate-400 mt-1">{WIZARD_GUIDES[id].tagline}</p>
+            </button>)}
+          </div>
+          <p className="text-xs text-amber-200/90">Free tiers have limits. This app cannot guarantee zero bills if you link a paid account.</p>
+        </div>}
+        {step===1&&<div className="space-y-3">
+          <h3 className="text-lg font-bold text-lime-100">Get set up with {info.name}</h3>
+          <ol className="space-y-2">{guide.steps.map((s,i)=><li key={i} className="flex gap-3 rounded-xl bg-slate-900/65 border border-slate-800/80 p-3"><span className="shrink-0 w-6 h-6 grid place-items-center rounded-full bg-emerald-800/40 text-lime-300 font-bold text-xs">{i+1}</span><span className="text-sm text-slate-200 leading-5">{s}</span></li>)}</ol>
+          {info.keyUrl&&<a className="btn btn-primary inline-flex items-center gap-2" href={info.keyUrl} target="_blank" rel="noopener noreferrer">{guide.linkText}<Icon name="arrow" size={16}/></a>}
+          <p className="rounded-xl border border-amber-700/40 bg-amber-950/20 text-amber-100 text-xs leading-5 p-3">{guide.warning}</p>
+        </div>}
+        {step===2&&<div className="space-y-3">
+          <h3 className="text-lg font-bold text-lime-100">{hosted?'Paste your API key':draft.provider==='ollama'?'Connect your own Ollama server':'Nothing to configure'}</h3>
+          {hosted?<React.Fragment>
+            <p className="text-xs text-slate-300">Paste the key created for your <strong>free</strong> account or project. It will only be saved to this browser when you finish.</p>
+            <div className="relative"><input className="field pr-14 font-mono text-sm" type={showKey?'text':'password'} value={draft.key} autoComplete="off" spellCheck={false} placeholder="Paste your free-tier API key" onChange={e=>change({key:e.target.value,confirmed:false})}/>
+              <button type="button" className="absolute right-3 top-2.5 p-1 text-lime-300" onClick={()=>setShowKey(v=>!v)} aria-label="Show or hide API key"><Icon name={showKey?'eyeoff':'eye'} size={19}/></button>
+            </div>
+            <label className="flex gap-3 items-start rounded-xl border border-amber-600/50 bg-amber-950/25 p-3 cursor-pointer">
+              <input className="h-4 w-4 mt-1 shrink-0 accent-lime-500" type="checkbox" checked={draft.confirmed} onChange={e=>change({confirmed:e.target.checked})}/>
+              <span className="text-xs leading-5 text-amber-100"><strong>I checked my account.</strong> This key belongs to a genuine FREE-tier account/project with no billing-enabled project, paid plan, auto-top-up or auto-recharge. I know the app cannot verify my billing settings.</span>
+            </label>
+            <p className="text-[11px] leading-5 text-slate-400">Privacy: keys are stored in unencrypted browser localStorage after setup. Only use a trusted device. Never paste your key into a chat message.</p>
+          </React.Fragment>:draft.provider==='ollama'?<React.Fragment>
+            <label className="text-xs font-semibold text-slate-300 block">Private Ollama endpoint</label>
+            <input className="field font-mono text-sm" value={draft.url} spellCheck={false} onChange={e=>change({url:e.target.value})} placeholder="http://localhost:11434/v1"/>
+            <p className="text-xs text-amber-100 leading-5">Only localhost and private LAN hosts are allowed. If you are opening this website on your phone, use your PC’s LAN address, not localhost.</p>
+          </React.Fragment>:<p className="text-sm text-emerald-200">The local demo needs no key or server. Continue to choose its simulated model.</p>}
+        </div>}
+        {step===3&&<div className="space-y-4">
+          <h3 className="text-lg font-bold text-lime-100">Choose a model</h3>
+          <p className="text-xs text-slate-300">Only models permitted by the app’s free-only filter are shown. You can discover more vetted models later under Settings → AI provider.</p>
+          <div className="space-y-2">
+            {models.map(([id,label])=><button type="button" key={id} onClick={()=>change({model:id})}
+              aria-pressed={draft.model===id}
+              className={'w-full text-left flex items-center gap-3 border rounded-xl px-3 py-3 '+(draft.model===id?'border-lime-400 bg-lime-500/15':'border-slate-700 bg-slate-900/70 hover:border-emerald-600')}>
+              <span className={'w-4 h-4 rounded-full border-2 shrink-0 '+(draft.model===id?'border-lime-400 bg-lime-500':'border-slate-500')}/>
+              <span className="text-sm text-slate-100 break-all">{label}</span>
+            </button>)}
+          </div>
+          {draft.provider==='ollama'&&<div><label className="text-xs text-slate-300 block mb-2">Already-installed model name</label><input className="field font-mono text-sm" value={draft.model} spellCheck={false} onChange={e=>change({model:e.target.value})}/></div>}
+          {draft.provider==='openrouter'&&<p className="text-xs text-emerald-200">Tip: openrouter/free automatically picks an eligible free model. It is the simplest starting choice.</p>}
+        </div>}
+        {step===4&&<div className="space-y-4">
+          <h3 className="text-lg font-bold text-lime-100">Test {info.name}</h3>
+          <div className="rounded-xl border border-emerald-800/60 bg-slate-900/75 p-3 space-y-1.5 text-xs"><p><span className="text-slate-400">Provider:</span> {info.name}</p><p><span className="text-slate-400">Model:</span> <span className="break-all text-lime-200">{draft.model}</span></p><p className="text-slate-400">{draft.provider==='demo'?'No network calls will be made.':'One short real inference request will be sent directly from your browser. It counts towards your allowance.'}</p></div>
+          <button type="button" disabled={testing} onClick={runTest} className="btn btn-primary w-full justify-center py-3 text-sm">{testing?'Testing connection…':test.status==='error'?'Retry free test':'Run free connection test'}</button>
+          {test.status!=='idle'&&<div className={'rounded-xl border p-3 text-xs leading-5 break-words '+(test.status==='ok'?'border-lime-600/60 bg-lime-950/30 text-lime-100':test.status==='error'?'border-amber-600/60 bg-amber-950/30 text-amber-100':'border-slate-700 bg-slate-900 text-slate-300')} role="status"><strong>{test.status==='ok'?'✓ Connection worked':test.status==='error'?'Could not verify':'Checking…'}</strong><p className="mt-1">{test.message}</p></div>}
+          <p className="text-[11px] text-slate-400 leading-5">A successful test confirms this model answered once. It cannot prove your provider account will never charge. You can save without testing if browser restrictions prevent a test.</p>
+        </div>}
+        {step===5&&<div className="space-y-4">
+          <div className="rounded-2xl border border-lime-500/50 bg-lime-500/10 p-5 text-center"><div className="text-4xl mb-2">{testedOnSave?'✓':'◌'}</div><h3 className="text-xl font-bold text-lime-100">{testedOnSave?'Connected and ready':'Settings saved'}</h3><p className="text-sm text-slate-300 mt-2">{info.name} is now selected with {draft.model}. {testedOnSave?'The live test returned a response.':'The connection was not verified; try a short chat message to check it.'}</p></div>
+          <button type="button" className="btn btn-soft w-full justify-center" onClick={()=>{setStep(0);setTest({status:'idle',message:''});setSaved(false);setTestedOnSave(false);}}>Set up another free provider</button>
+          <p className="text-center text-xs text-slate-400">You can reopen this robot at any time from Settings.</p>
+        </div>}
+      </div>
+      <div className="relative flex items-center justify-between gap-2 border-t border-emerald-800/50 bg-[#091810] px-4 sm:px-6 py-3 safe-bottom">
+        {step===5?<button type="button" className="btn btn-primary w-full justify-center py-3" onClick={onClose}>Start chatting</button>:<React.Fragment>
+          <button type="button" className="btn btn-soft disabled:opacity-40" disabled={step===0||testing} onClick={()=>setStep(n=>n-1)}>Back</button>
+          <div className="flex gap-2 items-center">
+            {step===4?<React.Fragment>
+              {test.status!=='ok'&&<button type="button" className="btn btn-soft text-xs" disabled={testing} onClick={()=>{try{saveConfiguration()}catch(e){setTest({status:'error',message:e.message||String(e)})}}}>Save untested</button>}
+              {test.status==='ok'&&<button type="button" className="btn btn-primary" onClick={()=>{try{saveConfiguration()}catch(e){setTest({status:'error',message:e.message||String(e)})}}}>Finish setup</button>}
+            </React.Fragment>:<button type="button" className="btn btn-primary" disabled={!allowed||testing} onClick={()=>setStep(n=>n+1)}>{step===0?'Get started':'Continue'}</button>}
+          </div>
+        </React.Fragment>}
+      </div>
+    </div>
+  </div>;
+}
+
+function Settings({value,onChange,onClose,onOpenDiagnostics,onOpenWizard}) {
   const [settingsPage,setSettingsPage]=useState('home');
   const [hordeModels,setHordeModels]=useState([]);
   const [hordeDiscovery,setHordeDiscovery]=useState({loading:false,message:''});
@@ -3300,6 +3533,10 @@ function Settings({value,onChange,onClose,onOpenDiagnostics}) {
       </div>
       <div key={settingsPage} className="overflow-y-auto thin-scroll p-4 sm:p-5 space-y-5">
         {settingsPage==='home'&&<div className="space-y-4">
+          <button type="button" onClick={onOpenWizard} className="w-full flex gap-3 items-center rounded-2xl border border-lime-500/60 bg-lime-500/10 px-3 py-3 text-left hover:bg-lime-500/20">
+            {SIDEBAR_ROBOT_IMAGE&&<img src={SIDEBAR_ROBOT_IMAGE} alt="Grumpy robot" className="w-14 h-14 object-contain rounded-xl bg-[#071a10] shrink-0"/>}
+            <span className="flex-1"><strong className="text-sm text-lime-100 block">Let the robot set it up</strong><span className="text-xs text-slate-300">Step-by-step free provider wizard · keys, models and test</span></span><Icon name="chevron" size={19}/>
+          </button>
           <button type="button" onClick={()=>setSettingsPage('safety')}
             className="w-full flex gap-2.5 items-center rounded-xl border border-emerald-800/60 bg-emerald-950/20 px-3 py-3 text-left hover:bg-emerald-950/40">
             <Icon name="check" size={16} className="text-lime-300"/>
@@ -3570,6 +3807,12 @@ function App() {
   const [activeId,setActiveId]=useState(initial.chats.some(c=>c.id===initial.activeId)?initial.activeId:(initial.chats[0]?.id || null));
   const [settings,setSettings]=useState(initial.settings);
   const [drawer,setDrawer]=useState(false),[settingsOpen,setSettingsOpen]=useState(false),[diagnosticsOpen,setDiagnosticsOpen]=useState(false);
+  const [wizardOpen,setWizardOpen]=useState(()=>{
+    try{return !localStorage.getItem('tight-arse-setup-wizard-seen-v1')&&
+      !['openrouter','groq','gemini'].some(id=>initial.settings.profiles[id]?.key?.trim()&&initial.settings.freeTierConfirmed?.[id]);}
+    catch{return false;}
+  });
+  function dismissWizard(){try{localStorage.setItem('tight-arse-setup-wizard-seen-v1','1');}catch{}setWizardOpen(false);}
   const [draft,setDraft]=useState(''),[attachments,setAttachments]=useState([]),[busy,setBusy]=useState(null),[notice,setNotice]=useState('');
   const [reading,setReading]=useState(false);
   const [imageMode,setImageMode]=useState(false);
@@ -4511,7 +4754,8 @@ function App() {
             <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">What shall we work on?</h2>
             <p className="text-slate-400 text-sm max-w-sm mt-3 leading-6">Chat with free and local AI models. Search the web, attach images, PDFs or code, and save generated snippets.</p>
             <div className="flex gap-2 flex-wrap justify-center mt-6">{['Write a Python script','Explain a PDF','Create a React component'].map(s=><button key={s} className="btn btn-soft border border-slate-700/70 !text-xs" onClick={()=>{setDraft(s);inputRef.current?.focus();}}>{s}</button>)}</div>
-            <p className="text-xs text-slate-500 mt-6">Currently selected: <button className="text-lime-300 underline" onClick={()=>setSettingsOpen(true)}>{PROVIDERS[settings.provider].name}</button></p>
+            {!['demo','ollama'].includes(settings.provider)&&(!profile.key?.trim()||!settings.freeTierConfirmed?.[settings.provider])&&<button type="button" onClick={()=>setWizardOpen(true)} className="btn btn-primary mt-5">Guided free AI setup · with the grumpy robot</button>}
+             <p className="text-xs text-slate-500 mt-6">Currently selected: <button className="text-lime-300 underline" onClick={()=>setSettingsOpen(true)}>{PROVIDERS[settings.provider].name}</button></p>
           </div> : <div className="space-y-6">{active.messages.map(m=><Message key={m.id} message={m}
               streaming={busy===active.id&&m.role==='assistant'&&m.status==='streaming'}
               onContinue={continueResponse}
@@ -4561,7 +4805,8 @@ function App() {
         </div>
       </div>
     </main>
-    {settingsOpen&&<Settings value={settings} onChange={setSettings} onClose={()=>setSettingsOpen(false)} onOpenDiagnostics={()=>{setSettingsOpen(false);setDiagnosticsOpen(true);}}/>}
+    {settingsOpen&&<Settings value={settings} onChange={setSettings} onClose={()=>setSettingsOpen(false)} onOpenDiagnostics={()=>{setSettingsOpen(false);setDiagnosticsOpen(true);}} onOpenWizard={()=>{setSettingsOpen(false);setWizardOpen(true);}}/>}
+    {wizardOpen&&<ProviderSetupWizard value={settings} onChange={setSettings} onClose={dismissWizard} onUsage={()=>setUsageRevision(v=>v+1)}/>}
     {diagnosticsOpen&&<DiagnosticsPanel chatId={active?.id||activeId} onClose={()=>setDiagnosticsOpen(false)}/>}
   </div>;
 }
