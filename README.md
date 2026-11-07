@@ -4,6 +4,19 @@ A standalone, mobile-first, free-tier-first LLM chat and web-search client built
 
 > **Project requirements:** [Scope and guardrails](docs/PROJECT_SCOPE.md). Read these before making changes.
 
+## Android WebGPU device-loss recovery (v29)
+
+A real Android browser diagnostics export (2026-11-07 09:30 UK) confirmed v28's earlier system-message bug was fixed: local WebLLM inference began with Llama 3.2 1B and a two-message request. The first attempt then failed during WebGPU buffer mapping (mapAsync/GPUBuffer "Buffer was unmapped before mapping was resolved"). A subsequent "Hello?" failed immediately with ModelNotLoadedError. WebLLM can unload its model internally when its GPU device is lost, leaving the application with a stale engine reference.
+
+**v29 fix:**
+- Recognise WebGPU mapAsync/GPUBuffer failures, device-loss and model-unloaded errors; invalidate the application's reference to the failed engine, including its selected loaded model.
+- Preserve an explicit error status with advice to load again or try the lighter SmolLM2 360M model, rather than setting the broken engine back to "ready" inside a finally block.
+- Do **not** race WebLLM's own asynchronous lost-device cleanup by independently unloading a dead device during the failing request. The next manual model load/normal request builds a fresh engine; reload the page if WebGPU is unstable.
+- The chat now treats Stop as a cancellation only if **our AbortController was actually aborted**. A browser's GPU-related DOM AbortError is an inference error, not automatic proof that a user clicked Stop. Normal free hosted-provider handling remains unchanged.
+- The engine-recovery functions were exercised using isolated tests with a throwing mock WebLLM engine (GPU mapAsync AbortError), a subsequent healthy engine, and a ModelNotLoadedError. No physical device test has yet confirmed the root GPU driver/runtime issue is solved.
+
+This fix prevents the **second stale-engine error**. It does **not** guarantee that WebLLM's underlying first WebGPU failure disappears; driver, memory or runtime limitations may still require using a smaller model or another browser.
+
 ## WebLLM system-message crash fix (v28)
 
 The first live in-browser chat reported: `System prompt should always be the first message in \u0060messages\u0060.` The shared conversation builder can intentionally produce multiple system messages (primary instructions, date/context notes, continuation guidance); the WebLLM chat template expects precisely one system message and requires it at the beginning. v28 consolidates **all** system instructions in their original order into one initial system message, without changing the API format for OpenRouter, Groq, Gemini or Ollama. A default initial system instruction is inserted when none exists. Manual continuation evidence is also inserted after the primary system prompt, rather than being prepended ahead of it.
