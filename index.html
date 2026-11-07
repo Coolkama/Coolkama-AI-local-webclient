@@ -381,7 +381,7 @@
 </script>
 <script type="text/babel">
 const {useState, useEffect, useLayoutEffect, useRef, useMemo} = React;
-const APP_BUILD = '2026-11-07-browser-runtime-diagnostics-v30';
+const APP_BUILD = '2026-11-07-android-gpu-safeguards-v31';
 const SIDEBAR_ROBOT_IMAGE=window.__tightArseSidebarRobot||'';
 const STORAGE_KEY = 'llm-workbench-v1';
 const USAGE_KEY = 'llm-workbench-free-only-usage-v1';
@@ -450,6 +450,7 @@ const isApprovedModel = (provider,id) => {
   return !!PROVIDERS[provider]?.models?.some(([m])=>m===id);
 };
 function enforceFreeOnly(provider,profile,settings) {
+  if(provider==='browser')requireBrowserModelRiskConsent(profile.model,profile.browserRiskAccepted);
   if(!isApprovedModel(provider,profile.model))throw new Error('FREE-ONLY STOP: This model is not approved as free. Select a listed free model in Settings.');
   if(provider!=='ollama'&&provider!=='demo'&&provider!=='browser'&&profile.url.replace(/\/+$/,'')!==PROVIDERS[provider].url)
     throw new Error('FREE-ONLY STOP: Remote base URLs are fixed to official free-tier provider endpoints.');
@@ -655,6 +656,12 @@ async function diagExport(chatId=null){
 // WebLLM is imported only when a user actually loads an on-device model.
 // No API key or model-inference server is used. Weights are fetched once and
 // cached by WebLLM under this browser/site origin, subject to storage eviction.
+const isAndroidWebLLMDevice=()=>/Android/i.test(navigator.userAgent);
+const isHighRiskBrowserModel=model=>isAndroidWebLLMDevice()&&model!=='SmolLM2-360M-Instruct-q4f32_1-MLC';
+function requireBrowserModelRiskConsent(model,accepted){
+  if(isHighRiskBrowserModel(model)&&accepted!==true)
+    throw new Error('Android GPU safety: larger WebLLM models have caused browser crashes and device stalls during repeated chat. Select SmolLM2 360M, or acknowledge the risk in Settings → AI provider → In-Browser AI before trying a larger model.');
+}
 const BROWSER_MODEL_SIZES={
   'SmolLM2-360M-Instruct-q4f32_1-MLC':{name:'SmolLM2 360M · lightest',vram:580,download:'~200–400 MB'},
   'Llama-3.2-1B-Instruct-q4f16_1-MLC':{name:'Llama 3.2 1B · recommended',vram:879,download:'~600–900 MB'},
@@ -683,7 +690,8 @@ async function checkBrowserWebGPU(){
     return {ok:true,text:'WebGPU adapter available. Local inference may work on this device.'};
   }catch(e){return {ok:false,text:'WebGPU blocked: '+String(e.message||e)};}
 }
-async function loadBrowserLLM(model){
+async function loadBrowserLLM(model,riskAccepted=false){
+  requireBrowserModelRiskConsent(model,riskAccepted);
   if(!Object.prototype.hasOwnProperty.call(BROWSER_MODEL_SIZES,model))
     throw new Error('This in-browser model is not in the vetted local catalogue.');
   if(BROWSER_LLM.engine&&BROWSER_LLM.model===model)return BROWSER_LLM.engine;
@@ -738,9 +746,10 @@ async function unloadBrowserLLM(){
   updateBrowserModelStatus({phase:'idle',model:null,progress:0,text:'Model unloaded from GPU. Cached download is retained.'});
 }
 
-async function loadBrowserModelForTurn(model,signal){
+async function loadBrowserModelForTurn(model,signal,riskAccepted=false){
   if(signal?.aborted)throw new DOMException('Stopped','AbortError');
-  if(!signal)return loadBrowserLLM(model);
+  requireBrowserModelRiskConsent(model,riskAccepted);
+  if(!signal)return loadBrowserLLM(model,riskAccepted);
   // Stop should release the chat immediately even if a multi-GB model download
   // cannot be cancelled by the upstream loader. The download may continue in
   // the background and populate cache; no inference will run after cancellation.
@@ -748,7 +757,7 @@ async function loadBrowserModelForTurn(model,signal){
     let finished=false;
     const cancel=()=>{if(finished)return;finished=true;reject(new DOMException('Stopped','AbortError'));};
     signal.addEventListener('abort',cancel,{once:true});
-    loadBrowserLLM(model).then(
+    loadBrowserLLM(model,riskAccepted).then(
       engine=>{if(finished)return;finished=true;signal.removeEventListener('abort',cancel);resolve(engine);},
       error=>{if(finished)return;finished=true;signal.removeEventListener('abort',cancel);reject(error);}
     );
@@ -796,7 +805,7 @@ async function streamBrowserChat({profile,messages,temperature,signal,onToken=()
   if(BROWSER_LLM.generating)throw new Error('A local generation is already running.');
   const model=profile.model;
   const started=performance.now();
-  const engine=await loadBrowserModelForTurn(model,signal);
+  const engine=await loadBrowserModelForTurn(model,signal,profile.browserRiskAccepted);
   if(signal?.aborted)throw new DOMException('Stopped','AbortError');
   // WebLLM built-in models in this initial release are text-only. Tool calls,
   // remote search and vision attachments are intentionally not advertised.
@@ -806,7 +815,8 @@ async function streamBrowserChat({profile,messages,temperature,signal,onToken=()
   const greeting=/^(?:hi|hello|hey|hiya|howdy|yo|good (?:morning|afternoon|evening))[.!?\s]*$/i.test(lastUser);
   // A tiny model should not ramble through 512 tokens when greeted.
   // Other prompts retain their full locally configured output allowance.
-  const max_tokens=Math.min(greeting?128:768,Math.max(64,cap===null?512:cap));
+  const mobileHighRisk=isHighRiskBrowserModel(model);
+  const max_tokens=Math.min(greeting?128:mobileHighRisk?256:768,Math.max(64,cap===null?512:cap));
   const small=model.startsWith('SmolLM2-360M-');
   const request={
     messages:input,
@@ -925,11 +935,11 @@ const PROVIDERS = {
     models: [['gemma4','Gemma 4 (if installed)'],['llama3.2','Llama 3.2 (if installed)'],['qwen3','Qwen 3 (if installed)']]
   },
   browser: {
-    name: 'In-Browser AI', url: '', model: 'Llama-3.2-1B-Instruct-q4f16_1-MLC', keyUrl: '',
+    name: 'In-Browser AI', url: '', model: 'SmolLM2-360M-Instruct-q4f32_1-MLC', keyUrl: '',
     help: 'Real AI inference on this device using WebGPU and WebLLM. No API key or remote inference. Models download from public hosting and are cached by your browser. First load may take several minutes and use gigabytes of storage/RAM. Text chat only in v27: no web search, model tool calls or vision attachments.',
     models: [
-      ['SmolLM2-360M-Instruct-q4f32_1-MLC','SmolLM2 360M · ~580 MB GPU'],
-      ['Llama-3.2-1B-Instruct-q4f16_1-MLC','Llama 3.2 1B · ~880 MB GPU (recommended)'],
+      ['SmolLM2-360M-Instruct-q4f32_1-MLC','SmolLM2 360M · lighter Android option · ~580 MB GPU'],
+      ['Llama-3.2-1B-Instruct-q4f16_1-MLC','Llama 3.2 1B · high-risk Android experiment · ~880 MB GPU'],
       ['SmolLM2-1.7B-Instruct-q4f16_1-MLC','SmolLM2 1.7B · ~1.8 GB GPU'],
       ['Llama-3.2-3B-Instruct-q4f16_1-MLC','Llama 3.2 3B · ~2.3 GB GPU']
     ]
@@ -940,7 +950,7 @@ const PROVIDERS = {
     models: [['offline-demo','Offline streaming simulator']]
   }
 };
-const freshProfiles = () => Object.fromEntries(Object.entries(PROVIDERS).map(([id,p]) => [id, { key:'', url:p.url, model:p.model, maxTokens:id==='groq'?16384:id==='browser'?512:2048, outputLimitMode:id==='groq'?'manual':'auto', contextTokens:id==='browser'?3072:8192, groqPrefill:true }]));
+const freshProfiles = () => Object.fromEntries(Object.entries(PROVIDERS).map(([id,p]) => [id, { key:'', url:p.url, model:p.model, browserRiskAccepted:false, maxTokens:id==='groq'?16384:id==='browser'?512:2048, outputLimitMode:id==='groq'?'manual':'auto', contextTokens:id==='browser'?3072:8192, groqPrefill:true }]));
 const CONTEXT_WINDOW_CHOICES = [2048,3072,4096,8192,16384,32768,65536];
 function contextInputLimit(profile){
   const n=Number(profile?.contextTokens);
@@ -953,7 +963,13 @@ function contextInputLimit(profile){
 const GROQ_FREE_CONTEXT_CEILING=6000;
 function effectiveRequestInputLimit(provider,profile){
   const desired=contextInputLimit(profile);
-  return provider==='groq'?Math.min(desired,GROQ_FREE_CONTEXT_CEILING):provider==='browser'?Math.min(desired,2600):desired;
+  if(provider==='groq')return Math.min(desired,GROQ_FREE_CONTEXT_CEILING);
+  if(provider==='browser'){
+    // Experimental Android GPU: avoid a rapidly growing prompt/KV workload.
+    // This limits the sent context, not saved conversation history.
+    return Math.min(desired,isAndroidWebLLMDevice()?(isHighRiskBrowserModel(profile?.model)?512:768):2600);
+  }
+  return desired;
 }
 function outputTokenLimit(profile){
   // Legacy saved maxTokens values stay available for Manual mode, but do not
@@ -3907,7 +3923,7 @@ function Settings({value,onChange,onClose,onOpenDiagnostics,onOpenWizard}) {
   },[value.provider]);
   async function prepareLocalModel(){
     setLocalWork(true);setLocalError('');
-    try{await loadBrowserLLM(value.profiles.browser.model);}
+    try{await loadBrowserLLM(value.profiles.browser.model,value.profiles.browser.browserRiskAccepted);}
     catch(error){setLocalError(String(error.message||error));}
     finally{setLocalWork(false);}
   }
