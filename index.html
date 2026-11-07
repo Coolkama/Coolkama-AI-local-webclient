@@ -375,7 +375,7 @@
 </script>
 <script type="text/babel">
 const {useState, useEffect, useLayoutEffect, useRef, useMemo} = React;
-const APP_BUILD = '2026-11-07-webllm-system-message-fix-v28';
+const APP_BUILD = '2026-11-07-browser-gpu-recovery-v29';
 const SIDEBAR_ROBOT_IMAGE=window.__tightArseSidebarRobot||'';
 const STORAGE_KEY = 'llm-workbench-v1';
 const USAGE_KEY = 'llm-workbench-free-only-usage-v1';
@@ -765,6 +765,26 @@ function normaliseBrowserChatMessages(messages){
     'You are a helpful assistant. Answer the user clearly and accurately.'};
   return [first,...conversation];
 }
+
+// WebLLM can unload a model internally when its WebGPU device is lost.
+// A GPUBuffer mapAsync AbortError is not necessarily a user cancellation.
+function isBrowserEngineLost(error){
+  const detail=String(error?.message||error||'')+' '+String(error?.name||'');
+  return /mapAsync|GPUBuffer|buffer (?:was|is) unmapped|buffer (?:was|is) destroyed|device.{0,25}lost|GPU.{0,20}(?:lost|destroyed|out of memory)|out of memory|ModelNotLoadedError|model not loaded before trying|No model is loaded|pipeline not loaded/i.test(detail);
+}
+function invalidateBrowserEngine(engine,model,error,trace={}){
+  if(BROWSER_LLM.engine!==engine||BROWSER_LLM.model!==model)return false;
+  // Do not unload an already lost device. WebLLM may be performing its own
+  // unload asynchronously; competing with its GPU buffer maps is unsafe.
+  BROWSER_LLM.engine=null;BROWSER_LLM.model=null;
+  updateBrowserModelStatus({phase:'error',model,progress:0,
+    text:'WebGPU inference failed and the model was discarded. Reload the model; if it repeats, try SmolLM2 360M. Reload the webpage if your browser GPU remains unstable.'});
+  diagLog('normal','browser-engine-invalidated',{
+    model,reason:String(error?.message||error),userCancelled:!!trace.userCancelled
+  },trace);
+  return true;
+}
+
 async function streamBrowserChat({profile,messages,temperature,signal,onToken=()=>{},trace={}}){
   if(signal?.aborted)throw new DOMException('Stopped','AbortError');
   if(BROWSER_LLM.generating)throw new Error('A local generation is already running.');
@@ -805,12 +825,21 @@ async function streamBrowserChat({profile,messages,temperature,signal,onToken=()
     return {content,toolCalls:[],finishReason,actualModel:model,usage,
       extraContent:null,reasoningDetails:[],metrics};
   }catch(error){
-    diagLog('normal','browser-inference-error',{model,message:String(error.message||error)},trace);
+    const gpuLost=isBrowserEngineLost(error);
+    const reset=gpuLost?invalidateBrowserEngine(engine,model,error,{...trace,userCancelled:!!signal?.aborted}):false;
+    diagLog('normal','browser-inference-error',{
+      model,name:error?.name||null,message:String(error?.message||error),gpuLost,
+      engineInvalidated:reset,userCancelled:!!signal?.aborted
+    },trace);
+    if(reset&&!signal?.aborted)
+      throw new Error('WebGPU inference failed and the local model was reset. Try loading it again, or switch to SmolLM2 360M if it repeats. Details: '+String(error?.message||error));
     throw error;
   }finally{
     signal?.removeEventListener('abort',interrupt);
     BROWSER_LLM.generating=false;
-    updateBrowserModelStatus({phase:'ready',model,progress:1,text:'On-device model ready: '+BROWSER_MODEL_SIZES[model].name});
+    // Never mark an engine ready after WebLLM removed the model on device loss.
+    if(BROWSER_LLM.engine===engine&&BROWSER_LLM.model===model)
+      updateBrowserModelStatus({phase:'ready',model,progress:1,text:'On-device model ready: '+BROWSER_MODEL_SIZES[model].name});
   }
 }
 
@@ -4631,7 +4660,7 @@ function App() {
         imageResult:result,imageGeneration:result.generation,imageProgress:null,status:'done'});
       diagLog('normal','horde-generation-complete',{requestId:result.requestId,model:result.model,size:result.size},trace);
     }catch(e){
-      const stopped=e.name==='AbortError'||controller.signal.aborted;
+      const stopped=controller.signal.aborted;
       patch({content:stopped?'Image generation stopped.':'Image generation failed.',
         imageProgress:null,status:stopped?'stopped':'error',error:stopped?'':String(e.message||e)});
       diagLog('normal',stopped?'horde-generation-cancelled':'horde-generation-error',{
@@ -5175,7 +5204,7 @@ function App() {
       diagLog('normal','turn-finished',{provider,outputChars:output.length,webSearches:searchLog.length,sourceCount:allSources.length,incomplete,incompleteReason},diagCtx);
       diagLog('full','final-answer',{text:output},diagCtx);
     } catch(e) {
-      const stopped=e.name==='AbortError';
+      const stopped=controller.signal.aborted;
       diagLog('normal',stopped?'turn-aborted':'turn-error',{message:stopped?'User cancelled':(e.message||String(e)),type:e.name||'Error'},diagCtx);
       if(!stopped&&provider==='groq'&&isGroqRateLimit(e)&&allSources.length&&!output.trim()){
         // The model may have exhausted its free token budget after collecting
