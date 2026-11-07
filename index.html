@@ -3641,6 +3641,7 @@ function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
     const p=value.profiles[id]||freshProfiles()[id];
     return {provider:id,key:p.key||'',url:p.url||PROVIDERS[id].url,
       model:isApprovedModel(id,p.model)?p.model:PROVIDERS[id].model,
+      browserRiskAccepted:!!p.browserRiskAccepted,
       confirmed:!!value.freeTierConfirmed?.[id]};
   });
   const [showKey,setShowKey]=useState(false);
@@ -3672,6 +3673,7 @@ function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
     const p=value.profiles[id]||freshProfiles()[id];
     setDraft({provider:id,key:p.key||'',url:p.url||PROVIDERS[id].url,
       model:isApprovedModel(id,p.model)?p.model:PROVIDERS[id].model,
+      browserRiskAccepted:!!p.browserRiskAccepted,
       confirmed:!!value.freeTierConfirmed?.[id]});
     setTest({status:'idle',message:''});setShowKey(false);
     setGuideIndex(0);setGuideHelp(false);setGuideCompleted({});
@@ -3687,7 +3689,7 @@ function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
       profiles:{...current.profiles,[draft.provider]:{...current.profiles[draft.provider],
         key:hosted?draft.key.trim():'',
         url:draft.provider==='ollama'?draft.url.trim():PROVIDERS[draft.provider].url,
-        model:draft.model}}}));
+        model:draft.model,browserRiskAccepted:draft.provider==='browser'&&draft.browserRiskAccepted===true}}}));
     setTestedOnSave(test.status==='ok');setSaved(true);setStep(5);
   }
   async function runTest(){
@@ -3847,7 +3849,7 @@ function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
           <h3 className="text-lg font-bold text-lime-100">Choose a model</h3>
           <p className="text-xs text-slate-300">Only models permitted by the app’s free-only filter are shown. You can discover more vetted models later under Settings → AI provider.</p>
           <div className="space-y-2">
-            {models.map(([id,label])=><button type="button" key={id} onClick={()=>change({model:id})}
+            {models.map(([id,label])=><button type="button" key={id} onClick={()=>change({model:id,browserRiskAccepted:false})}
               aria-pressed={draft.model===id}
               className={'w-full text-left flex items-center gap-3 border rounded-xl px-3 py-3 '+(draft.model===id?'border-lime-400 bg-lime-500/15':'border-slate-700 bg-slate-900/70 hover:border-emerald-600')}>
               <span className={'w-4 h-4 rounded-full border-2 shrink-0 '+(draft.model===id?'border-lime-400 bg-lime-500':'border-slate-500')}/>
@@ -3855,7 +3857,11 @@ function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
             </button>)}
           </div>
           {draft.provider==='ollama'&&<div><label className="text-xs text-slate-300 block mb-2">Already-installed model name</label><input className="field font-mono text-sm" value={draft.model} spellCheck={false} onChange={e=>change({model:e.target.value})}/></div>}
-          {draft.provider==='browser'&&<p className="text-xs text-emerald-200">Start with the 1B model, or choose SmolLM2 360M for low-memory devices. Downloads may be large and cached files can be evicted.</p>}
+          {draft.provider==='browser'&&<p className="text-xs text-emerald-200">On Android, start with SmolLM2 360M. Llama 1B nearly froze a phone after repeated turns and crashed its browser. Larger models carry a higher stability risk.</p>}
+          {draft.provider==='browser'&&isHighRiskBrowserModel(draft.model)&&<label className="flex gap-2 rounded-xl border border-amber-500/65 bg-amber-950/30 p-3 text-xs text-amber-100 leading-5">
+            <input type="checkbox" className="mt-1 accent-lime-400 shrink-0" checked={!!draft.browserRiskAccepted} onChange={e=>change({browserRiskAccepted:e.target.checked})}/>
+            <span><strong>Higher GPU risk:</strong> This model contributed to a severe browser/device stall. I understand it may freeze or crash my browser, and I choose to try it.</span>
+          </label>}
           {draft.provider==='openrouter'&&<p className="text-xs text-emerald-200">Tip: openrouter/free automatically picks an eligible free model. It is the simplest starting choice.</p>}
         </div>}
         {step===4&&<div className="space-y-4">
@@ -4183,7 +4189,7 @@ function Settings({value,onChange,onClose,onOpenDiagnostics,onOpenWizard}) {
           {provider!=='ollama'&&<label className="flex gap-2 items-start rounded-xl border border-amber-700/60 bg-amber-950/20 p-3 text-xs leading-5 text-amber-100"><input className="mt-1 h-4 w-4 accent-emerald-500 shrink-0" type="checkbox" checked={confirmed} onChange={e=>updateConfirmation(e.target.checked)}/><span><strong>Required before API requests:</strong> I have checked that this API key uses the provider's genuine FREE tier, with NO billing-enabled project, Developer/pay-as-you-go plan or auto-recharge. I understand the app cannot independently verify account billing.</span></label>}
         </>}
         <div><div className="flex justify-between items-center mb-2"><label className="text-xs font-semibold text-slate-300">Free models only</label>{provider!=='demo'&&provider!=='browser'&&<button className="text-xs text-lime-300 disabled:opacity-50" disabled={loadingModels} onClick={loadModels}>{loadingModels?'Loading…':'Discover FREE models'}</button>}</div>
-          <select className="field mb-2" value={selectedModel} onChange={e=>patchProfile({model:e.target.value})}>
+          <select className="field mb-2" value={selectedModel} onChange={e=>patchProfile({model:e.target.value,...(provider==='browser'?{browserRiskAccepted:false}:{})})}>
             {listedModels.map(([id,label])=><option key={id} value={id}>{label}</option>)}
           </select>
           {discoveredModels.length>0&&<div className="flex flex-wrap items-center gap-3 mb-2 text-[11px] text-slate-400">
@@ -4206,6 +4212,14 @@ function Settings({value,onChange,onClose,onOpenDiagnostics,onOpenWizard}) {
           <p className="text-xs text-slate-300 leading-5">No API key, hosted inference or per-request charge. The selected model downloads from public servers, is cached by this browser and then runs on this device. Initial download may take several minutes.</p>
           <p className="text-[11px] text-emerald-300">WebLLM runtime: {window.__tightArseWebLLMVersion}{window.__tightArseWebLLMVersion==='0.2.79'?' · Android compatibility test (older GPU execution path)':' · desktop current runtime'}</p>
           <p className="text-xs text-slate-300 leading-5">Approximate <strong className="text-lime-200">{BROWSER_MODEL_SIZES[profile.model]?.vram||'?'} MB GPU memory</strong>, plus browser memory and storage ({BROWSER_MODEL_SIZES[profile.model]?.download||'large download'}). Start small on mobile.</p>
+          {isHighRiskBrowserModel(profile.model)&&<label className="flex items-start gap-2 rounded-xl border border-amber-500/70 bg-amber-950/30 p-3 text-xs leading-5 text-amber-100">
+            <input type="checkbox" className="mt-1 shrink-0 accent-lime-400"
+              checked={profile.browserRiskAccepted===true}
+              onChange={e=>patchProfile({browserRiskAccepted:e.target.checked})}/>
+            <span><strong>Experimental Android model — device crash risk.</strong> Llama 3.2 1B almost froze a phone and crashed Chrome during its fifth message. Larger models may do the same. I'm aware of the risk and specifically choose to enable this model.</span>
+          </label>}
+          {isAndroidWebLLMDevice()&&<p className="text-xs text-amber-200">Android precaution: request context is restricted to {effectiveRequestInputLimit('browser',profile)} estimated tokens{isHighRiskBrowserModel(profile.model)?' and responses to at most 256 tokens':''}. This does not guarantee GPU stability.</p>}
+
           {value.search.enabled&&<div className="rounded-lg border border-amber-600/60 bg-amber-950/30 p-2.5 text-xs text-amber-100">
             The local model cannot call web search or browser tools in v27.
             <button type="button" className="block mt-2 underline text-lime-300" onClick={()=>patchSearch({enabled:false})}>Turn off Web search now</button>
