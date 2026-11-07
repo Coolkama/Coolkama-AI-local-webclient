@@ -4,6 +4,22 @@ A standalone, mobile-first, free-tier-first LLM chat and web-search client built
 
 > **Project requirements:** [Scope and guardrails](docs/PROJECT_SCOPE.md). Read these before making changes.
 
+## Android WebLLM runtime comparison and complete Full Trace (v30)
+
+Real Android testing showed SmolLM2 360M generated all 512 tokens in response to "Hello!", but the output was incoherent and repetitive. The app then auto-continued and hit the previously observed GPUBuffer mapping failure. This demonstrates inference throughput but not yet reliable answer quality.
+
+WebLLM upstream issue [mlc-ai/web-llm#836](https://github.com/mlc-ai/web-llm/issues/836) reports Adreno WebGPU device loss in WebLLM 0.2.80+ and asks whether 0.2.79 works. This is an A/B hypothesis, not proof of the cause on this device.
+
+v30 changes:
+- On Android, dynamically import WebLLM 0.2.79 instead of 0.2.87; desktop remains on 0.2.87. Show the runtime version in the local-provider settings and log it.
+- For SmolLM2 360M, use lower temperature (maximum 0.4), top-p 0.85 and repetition penalty 1.12 to discourage repetitive generation. Other browser models use top-p 0.95 and repetition penalty 1.05.
+- Limit a standalone greeting to a maximum of 128 generated tokens; longer prompts retain the existing configured local output allowance (up to 768).
+- Disable unrequested automatic continuation **only for in-browser inference** to avoid the extra GPU workload seen in diagnostics. Manual Continue is still supported; hosted providers retain existing automatic continuation behaviour.
+- Shorten date information presented to local models; the full date/research instructions for hosted models are unaffected.
+- Full Trace now logs the exact local model-visible request, successful generated text and any partial response on failure. All full payloads remain in the existing local IndexedDB diagnostics archive, and are included when the user exports Full Trace.
+
+Mocked regression checks passed for generation settings, local text logging, automatic continuation exclusion and v26 backup preservation. Device-side answer quality and GPU stability after the version change have NOT yet been verified.
+
 ## Android WebGPU device-loss recovery (v29)
 
 A real Android browser diagnostics export (2026-11-07 09:30 UK) confirmed v28's earlier system-message bug was fixed: local WebLLM inference began with Llama 3.2 1B and a two-message request. The first attempt then failed during WebGPU buffer mapping (mapAsync/GPUBuffer "Buffer was unmapped before mapping was resolved"). A subsequent "Hello?" failed immediately with ModelNotLoadedError. WebLLM can unload its model internally when its GPU device is lost, leaving the application with a stale engine reference.
