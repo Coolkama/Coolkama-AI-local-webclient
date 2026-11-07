@@ -4,6 +4,21 @@ A standalone, mobile-first, free-tier-first LLM chat and web-search client built
 
 > **Project requirements:** [Scope and guardrails](docs/PROJECT_SCOPE.md). Read these before making changes.
 
+## Android GPU safeguards after near-freeze / Chrome crash (v31)
+
+On 2026-11-07, the user reported that the *fifth* Llama 3.2 1B in-browser chat message ("Hello:)") almost froze their Android phone and crashed Chrome. The diagnostic export shows the request started but contains no completion or error. Context-window estimates had grown from 109 tokens on the first request to 977 tokens on the fifth; several earlier replies worked at ~30 decode tokens/sec on WebLLM 0.2.79. This correlation does NOT establish whether the crash was caused by GPU memory exhaustion, WebLLM prefix/KV-cache reuse, the mobile browser/driver, or another factor.
+
+The upstream WebLLM API documents in-memory conversation-prefix reuse and a resetChat method, but resetting has not been shown to avoid this crash. Some Adreno/WebLLM configurations report device-loss even with limited context; a browser-level GPU fault cannot be reliably caught or prevented by JavaScript. See https://github.com/mlc-ai/web-llm/issues/836 and https://webllm.mlc.ai/docs/user/api_reference.html .
+
+Immediate *precautionary*, not curative, changes in v31:
+- New in-browser profiles default to SmolLM2 360M, **not** Llama 3.2 1B; previously saved model selections are preserved, but larger models cannot run on Android until the user explicitly acknowledges the instability risk.
+- Android Settings and the guided setup wizard show a specific higher-risk model warning with an opt-in checkbox. Selection of a different model resets the checkbox. Consent is checked both before a chat/model test and at the model load entrypoint.
+- Android browser chat input is limited to 768 **estimated** tokens for SmolLM2 360M and 512 for all larger models; the full chat history remains in local browser storage. This may omit or shorten older messages. Larger Android models receive at most 256 output tokens per request (128 for simple greetings). Desktop and all hosted providers retain their existing context/output budgets.
+- The model picker, help copy and setup tour no longer recommend the 1B model as the Android starting choice.
+- Experimental behaviour remains opt-in, and browser/device stability **is not guaranteed** even with the lighter model. Avoid stress-testing a phone that has already shown a severe stall.
+
+Manual functional tests on Android have NOT been performed since the v31 code change. Isolated tests verified opt-in enforcement for existing saved models, separate Android vs desktop input budgets, and Settings/wizard/runtime wiring. The untouched v26 page backup remains `backup.html`.
+
 ## Android WebLLM runtime comparison and complete Full Trace (v30)
 
 Real Android testing showed SmolLM2 360M generated all 512 tokens in response to "Hello!", but the output was incoherent and repetitive. The app then auto-continued and hit the previously observed GPUBuffer mapping failure. This demonstrates inference throughput but not yet reliable answer quality.
