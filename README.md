@@ -4,6 +4,19 @@ A standalone, mobile-first, free-tier-first LLM chat and web-search client built
 
 > **Project requirements:** [Scope and guardrails](docs/PROJECT_SCOPE.md). Read these before making changes.
 
+## Click-by-click, provider-specific robot tours (build v26)
+
+The v25 wizard's generic three-item account checklist has been replaced with **a sequence of individual actions**, one screen at a time. The robotic assistant changes its dialogue at each action, with an explicit menu/breadcrumb path, direct official link (if appropriate), what to look for, a visible paid-service warning, contextual "I'm stuck" troubleshooting, a completion action, progress indicators, and Back navigation. Users with an existing API key can skip to key entry; completing an action is a user attestation, not a claim that the browser inspected a third-party account.
+
+Provider-specific tours:
+- **OpenRouter (5 actions):** sign in → avoid buying credits/auto-recharge → API Keys page → create/label key → copy one-time secret; the free router (openrouter/free) is distinguished from paid models.
+- **Groq (5):** sign in → choose project → verify Free tier under Settings/Billing → create project API key (permission warning) → copy.
+- **Gemini (5):** AI Studio sign-in → Dashboard/Projects → check Free in Billing Tier column → create/select API key for precisely that project → copy; warns against Set up billing.
+- **Ollama (5):** install locally → launch server → copyable ollama pull gemma4 command → verify with ollama list → choose same-PC localhost or privately configured LAN address; warns against paid cloud models.
+- **Test Mode (2):** clear description of no-account simulation.
+
+Provider account pages are cross-origin, so the wizard **cannot automatically inspect, click or verify them**. The original key-entry attestation and explicit free-only connection test remain; the wizard does not silently change an API key or live provider settings before final save. Details are based on current provider documentation but the vendors can change their UI.
+
 ## Guided free-provider setup with the grumpy robot (build v25)
 
 Settings now offers **Let the robot set it up**, an interactive five-stage onboarding wizard starring the **identical grumpy robot SVG** used by the launch splash and chat. On a browser without a configured confirmed hosted provider, the wizard opens automatically once (after the existing four-second splash); it can always be reopened from Settings, and the empty chat state provides a shortcut when provider configuration is missing.
