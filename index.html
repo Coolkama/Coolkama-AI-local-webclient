@@ -3330,6 +3330,7 @@ const WIZARD_GUIDES = {
     steps:['Install Ollama on the computer running your models.','Download a model, for example using ollama pull gemma4.','If using another device, securely configure the private LAN endpoint and browser CORS access.'],
     warning:'On a phone, localhost means your phone, not your computer. HTTPS pages may block an insecure HTTP LAN address.'
   },
+  browser:{tagline:'Run real WebGPU inference inside this tab. No key or cloud model.',linkText:'',steps:['Check your WebGPU support.','Choose a small local model.','Download and test locally.'],warning:'Model downloads use data, browser storage and device GPU memory. Text chat only in v27.'},
   demo:{
     tagline:'See the chat interface work without any account or model.',
     linkText:'',
@@ -3472,6 +3473,30 @@ const WIZARD_TOURS={
       trap:'An HTTPS site may block insecure HTTP LAN requests; the wizard cannot bypass browser restrictions.',
       help:'Use the official Ollama FAQ for OLLAMA_HOST and OLLAMA_ORIGINS. Keep the service restricted to your trusted network and do not port-forward it publicly.'}
   ],
+  browser:[
+    {title:'Check WebGPU',robot:'Your device does the thinking. First, check its GPU brain.',
+      path:['In-Browser AI','WebGPU check'],url:'https://webgpu.github.io/webgpu-samples/',link:'Optional WebGPU demo',
+      instruction:'Use recent Chrome on Android or desktop and keep this webpage on HTTPS. The model loader will verify a GPU adapter automatically.',
+      look:'A supported GPU adapter and a secure browser page.',trap:'Without WebGPU, local inference cannot start; there is no paid fallback.',
+      help:'Try recent Chrome, enable graphics acceleration, and avoid restricted embedded browsers.'},
+    {title:'Pick a small model',robot:'Bigger is not always better. Especially when your phone has ideas above its RAM.',
+      path:['Choose model','Device memory'],url:'',link:'',
+      instruction:'Start with Llama 3.2 1B. If it fails, try the smaller SmolLM2 360M. Bigger options use more device memory.',
+      look:'A choice of four prebuilt, free-to-run models.',trap:'Downloads may use hundreds of megabytes to gigabytes of data and storage.',
+      help:'Use Wi-Fi for the first download and keep enough phone storage free.'},
+    {title:'Download once, run privately',robot:'The model downloads once. Then your GPU gets to earn its keep.',
+      path:['Choose model','Run local test'],url:'https://webllm.mlc.ai/docs/user/basic_usage.html',link:'About WebLLM',
+      instruction:'Continue to the model selection screen and press Run free connection test. Wait while WebLLM downloads and loads the model; the progress is shown here.',
+      look:'A progress indicator and eventually a real model reply.',
+      trap:'Browser cache cleanup may remove model weights, so a later visit can require another download.',
+      help:'If the GPU runs out of memory or the tab crashes, choose SmolLM2 360M.'},
+    {title:'What works in v27',robot:'Text chat, yes. Seeing pictures or browsing the web, no. I have limits.',
+      path:['In-Browser AI','Text chat'],url:'',link:'',
+      instruction:'Turn the globe (Web search) off. The local model handles typed messages and extracted text documents; image understanding and tool calls are not available in v27.',
+      look:'A streaming local text reply without an inference API key.',
+      trap:'Do not assume the local model knows current events. It has no live web access in this first version.',
+      help:'To use online research or images, change provider or use the separate opt-in image mode.'}
+  ],
   demo:[
     {title:'No account required',robot:'No account, no key. A fine financial arrangement.',
       path:['Tight Arse AI','Test Mode'],url:'',link:'',
@@ -3505,8 +3530,10 @@ function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
   const [saved,setSaved]=useState(false);
   const [testedOnSave,setTestedOnSave]=useState(false);
   const [testing,setTesting]=useState(false);
+  const [localProgress,setLocalProgress]=useState(browserModelStatus);
+  useEffect(()=>subscribeBrowserModelStatus(setLocalProgress),[]);
   const info=PROVIDERS[draft.provider],guide=WIZARD_GUIDES[draft.provider];
-  const hosted=!['ollama','demo'].includes(draft.provider);
+  const hosted=!['ollama','demo','browser'].includes(draft.provider);
   const tour=WIZARD_TOURS[draft.provider],action=tour[Math.min(guideIndex,tour.length-1)];
   const labels=['Choose','Account','Key / connection','Model','Test'];
   const stored=(value.discoveredModels?.[draft.provider]||[]).filter(id=>isApprovedModel(draft.provider,id));
@@ -3519,7 +3546,7 @@ function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
     hosted?'Paste the key here. I will not send it to any service except the provider you choose.':
       draft.provider==='ollama'?'Point me at your private Ollama server. No cloud required.':'No key. No credit card. No excuses.',
     'Pick a free model. The expensive ones are not invited.',
-    'Ready for a tiny test request? It uses your free quota, not a magic unlimited allowance.',
+    draft.provider==='browser'?'We will load a real model on your device. No remote inference!':'Ready for a tiny test request? It uses your free quota, not a magic unlimited allowance.',
     'There. Connected. Do not expect me to smile.'
   ];
   function choose(id){
@@ -3548,13 +3575,20 @@ function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
     if(testing)return;
     setTesting(true);setTest({status:'running',message:'Connecting directly to '+info.name+'…'});
     const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),30000);
+    const timeout=draft.provider==='browser'?null:setTimeout(()=>controller.abort(),30000);
     try{
       const p={...value.profiles[draft.provider],...draft};
       enforceFreeOnly(draft.provider,p,{...value,
         freeTierConfirmed:{...value.freeTierConfirmed,[draft.provider]:draft.confirmed}});
       if(draft.provider==='demo'){
         setTest({status:'ok',message:'The local demonstration mode is ready. No remote request was sent.'});
+        return;
+      }
+      if(draft.provider==='browser'){
+        const result=await streamBrowserChat({profile:p,temperature:0.3,
+          messages:[{role:'user',content:'Answer with the single word READY.'}],
+          signal:controller.signal,onToken:()=>{},trace:{wizard:true}});
+        setTest({status:'ok',message:'Local model replied: '+result.content.slice(0,220)});
         return;
       }
       // Every hosted test is a real inference request; count it before sending.
@@ -3672,7 +3706,7 @@ function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
           <p className="text-xs text-slate-400 leading-5">Once you've done this on the provider site, return to this tab and tap <strong className="text-lime-300">Done, next action</strong>. The robot won't claim you did something it cannot verify.</p>
         </div>}
         {step===2&&<div className="space-y-3">
-          <h3 className="text-lg font-bold text-lime-100">{hosted?'Paste your API key':draft.provider==='ollama'?'Connect your own Ollama server':'Nothing to configure'}</h3>
+          <h3 className="text-lg font-bold text-lime-100">{hosted?'Paste your API key':draft.provider==='ollama'?'Connect your own Ollama server':draft.provider==='browser'?'No API key needed':'Nothing to configure'}</h3>
           {hosted?<React.Fragment>
             <p className="text-xs text-slate-300">Paste the key created for your <strong>free</strong> account or project. It will only be saved to this browser when you finish.</p>
             <div className="relative"><input className="field pr-14 font-mono text-sm" type={showKey?'text':'password'} value={draft.key} autoComplete="off" spellCheck={false} placeholder="Paste your free-tier API key" onChange={e=>change({key:e.target.value,confirmed:false})}/>
@@ -3687,7 +3721,7 @@ function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
             <label className="text-xs font-semibold text-slate-300 block">Private Ollama endpoint</label>
             <input className="field font-mono text-sm" value={draft.url} spellCheck={false} onChange={e=>change({url:e.target.value})} placeholder="http://localhost:11434/v1"/>
             <p className="text-xs text-amber-100 leading-5">Only localhost and private LAN hosts are allowed. If you are opening this website on your phone, use your PC’s LAN address, not localhost.</p>
-          </React.Fragment>:<p className="text-sm text-emerald-200">The local demo needs no key or server. Continue to choose its simulated model.</p>}
+          </React.Fragment>:draft.provider==='browser'?<p className="text-sm text-emerald-200">Your device will perform all AI inference through WebGPU. No key or account needed. The model downloads from public hosting; the first use can be large.</p>:<p className="text-sm text-emerald-200">The local demo needs no key or server. Continue to choose its simulated model.</p>}
         </div>}
         {step===3&&<div className="space-y-4">
           <h3 className="text-lg font-bold text-lime-100">Choose a model</h3>
@@ -3701,11 +3735,13 @@ function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
             </button>)}
           </div>
           {draft.provider==='ollama'&&<div><label className="text-xs text-slate-300 block mb-2">Already-installed model name</label><input className="field font-mono text-sm" value={draft.model} spellCheck={false} onChange={e=>change({model:e.target.value})}/></div>}
+          {draft.provider==='browser'&&<p className="text-xs text-emerald-200">Start with the 1B model, or choose SmolLM2 360M for low-memory devices. Downloads may be large and cached files can be evicted.</p>}
           {draft.provider==='openrouter'&&<p className="text-xs text-emerald-200">Tip: openrouter/free automatically picks an eligible free model. It is the simplest starting choice.</p>}
         </div>}
         {step===4&&<div className="space-y-4">
           <h3 className="text-lg font-bold text-lime-100">Test {info.name}</h3>
-          <div className="rounded-xl border border-emerald-800/60 bg-slate-900/75 p-3 space-y-1.5 text-xs"><p><span className="text-slate-400">Provider:</span> {info.name}</p><p><span className="text-slate-400">Model:</span> <span className="break-all text-lime-200">{draft.model}</span></p><p className="text-slate-400">{draft.provider==='demo'?'No network calls will be made.':'One short real inference request will be sent directly from your browser. It counts towards your allowance.'}</p></div>
+          <div className="rounded-xl border border-emerald-800/60 bg-slate-900/75 p-3 space-y-1.5 text-xs"><p><span className="text-slate-400">Provider:</span> {info.name}</p><p><span className="text-slate-400">Model:</span> <span className="break-all text-lime-200">{draft.model}</span></p><p className="text-slate-400">{draft.provider==='demo'?'No network calls will be made.':draft.provider==='browser'?'The model will download to your browser (first use) and then generate a real reply on this device. No inference API call.':'One short real inference request will be sent directly from your browser. It counts towards your allowance.'}</p></div>
+          {draft.provider==='browser'&&localProgress.phase==='loading'&&<div className="rounded-xl border border-emerald-700/60 bg-emerald-950/25 p-3 space-y-2" role="status"><p className="text-xs text-lime-200 break-words">{localProgress.text}</p><div className="h-2 bg-slate-800 rounded-full overflow-hidden"><div className="bg-lime-400 h-full" style={{width:Math.round(localProgress.progress*100)+'%'}}/></div><p className="text-[10px] text-slate-400">{Math.round(localProgress.progress*100)}% · Keep this page open</p></div>}
           <button type="button" disabled={testing} onClick={runTest} className="btn btn-primary w-full justify-center py-3 text-sm">{testing?'Testing connection…':test.status==='error'?'Retry free test':'Run free connection test'}</button>
           {test.status!=='idle'&&<div className={'rounded-xl border p-3 text-xs leading-5 break-words '+(test.status==='ok'?'border-lime-600/60 bg-lime-950/30 text-lime-100':test.status==='error'?'border-amber-600/60 bg-amber-950/30 text-amber-100':'border-slate-700 bg-slate-900 text-slate-300')} role="status"><strong>{test.status==='ok'?'✓ Connection worked':test.status==='error'?'Could not verify':'Checking…'}</strong><p className="mt-1">{test.message}</p></div>}
           <p className="text-[11px] text-slate-400 leading-5">A successful test confirms this model answered once. It cannot prove your provider account will never charge. You can save without testing if browser restrictions prevent a test.</p>
