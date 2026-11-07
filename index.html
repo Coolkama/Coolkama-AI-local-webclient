@@ -4069,32 +4069,6 @@ function Settings({value,onChange,onClose,onOpenDiagnostics,onOpenWizard}) {
           </div>
         </details>
 
-        {provider==='browser'&&<div className="rounded-2xl border border-lime-500/40 bg-emerald-950/25 p-3.5 space-y-3">
-          <div className="flex items-center gap-2"><Icon name="layers" size={18} className="text-lime-300"/><strong className="text-sm text-lime-100">On-device WebGPU inference</strong></div>
-          <p className={'text-xs leading-5 '+(gpuCheck.ok===true?'text-emerald-200':'text-amber-200')}>{gpuCheck.ok===true?'✓ ':'⚠ '}{gpuCheck.text}</p>
-          <p className="text-xs text-slate-300 leading-5">No API key, hosted inference or per-request charge. The selected model downloads from public servers, is cached by this browser and then runs on this device. Initial download may take several minutes.</p>
-          <p className="text-xs text-slate-300 leading-5">Approximate <strong className="text-lime-200">{BROWSER_MODEL_SIZES[profile.model]?.vram||'?'} MB GPU memory</strong>, plus browser memory and storage ({BROWSER_MODEL_SIZES[profile.model]?.download||'large download'}). Start small on mobile.</p>
-          {value.search.enabled&&<div className="rounded-lg border border-amber-600/60 bg-amber-950/30 p-2.5 text-xs text-amber-100">
-            The local model cannot call web search or browser tools in v27.
-            <button type="button" className="block mt-2 underline text-lime-300" onClick={()=>patchSearch({enabled:false})}>Turn off Web search now</button>
-          </div>}
-          <div className="rounded-lg bg-slate-950/60 border border-emerald-800/50 p-2.5 space-y-1.5" role="status">
-            <p className="text-xs text-lime-200 break-words">{localState.text}</p>
-            {localState.phase==='loading'&&<div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden"><div className="h-full bg-lime-400" style={{width:Math.round(localState.progress*100)+'%'}}/></div>}
-            {localState.phase==='loading'&&<p className="text-[11px] text-slate-400">Model load {Math.round(localState.progress*100)}% · Keep this tab open.</p>}
-            {localState.phase==='ready'&&localState.model!==profile.model&&<p className="text-xs text-amber-200">The loaded model differs from your selection. Load the selected one below.</p>}
-          </div>
-          {localError&&<p className="text-xs text-amber-200 break-words">{localError}</p>}
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn btn-primary !text-xs disabled:opacity-50" onClick={prepareLocalModel}
-              disabled={localWork||localState.phase==='loading'||gpuCheck.ok===false||BROWSER_LLM.generating}>
-              {localWork||localState.phase==='loading'?'Loading model…':localState.phase==='ready'&&localState.model===profile.model?'Model ready':'Download / load model'}
-            </button>
-            {localState.phase==='ready'&&<button type="button" className="btn btn-soft !text-xs disabled:opacity-50" disabled={localWork||BROWSER_LLM.generating} onClick={freeLocalMemory}>Unload from GPU</button>}
-          </div>
-          <p className="text-[11px] leading-5 text-slate-400">Downloads stay cached after GPU unload, but browsers can evict them. This v27 provider is text-only, without image understanding, tool calling or Tavily. Switch providers for those features.</p>
-        </div>}
-
         {provider!=='demo'&&provider!=='browser'&&<>
           {provider!=='ollama'&&<div><label className="block text-xs font-semibold text-slate-300 mb-2">API key (FREE-tier account only)</label><div className="relative"><input className="field pr-12" type={showKey?'text':'password'} placeholder="Paste your FREE-tier API key" autoComplete="off" value={profile.key} onChange={e=>onChange(s=>({...s,profiles:{...s.profiles,[s.provider]:{...s.profiles[s.provider],key:e.target.value}},freeTierConfirmed:{...s.freeTierConfirmed,[s.provider]:false}}))}/><button className="absolute right-3 top-2.5 text-slate-400" onClick={()=>setShowKey(!showKey)} aria-label="Show or hide API key"><Icon name={showKey?'eyeoff':'eye'}/></button></div></div>}
           {provider==='ollama'
@@ -4128,6 +4102,32 @@ function Settings({value,onChange,onClose,onOpenDiagnostics,onOpenWizard}) {
           </details>
           {modelError&&<p className="text-xs text-amber-300 mt-1">{modelError}</p>}
         </div>
+        {provider==='browser'&&<div className="rounded-2xl border border-lime-500/40 bg-emerald-950/25 p-3.5 space-y-3">
+          <div className="flex items-center gap-2"><Icon name="layers" size={18} className="text-lime-300"/><strong className="text-sm text-lime-100">On-device WebGPU inference</strong></div>
+          <p className={'text-xs leading-5 '+(gpuCheck.ok===true?'text-emerald-200':'text-amber-200')}>{gpuCheck.ok===true?'✓ ':'⚠ '}{gpuCheck.text}</p>
+          <p className="text-xs text-slate-300 leading-5">No API key, hosted inference or per-request charge. The selected model downloads from public servers, is cached by this browser and then runs on this device. Initial download may take several minutes.</p>
+          <p className="text-xs text-slate-300 leading-5">Approximate <strong className="text-lime-200">{BROWSER_MODEL_SIZES[profile.model]?.vram||'?'} MB GPU memory</strong>, plus browser memory and storage ({BROWSER_MODEL_SIZES[profile.model]?.download||'large download'}). Start small on mobile.</p>
+          {value.search.enabled&&<div className="rounded-lg border border-amber-600/60 bg-amber-950/30 p-2.5 text-xs text-amber-100">
+            The local model cannot call web search or browser tools in v27.
+            <button type="button" className="block mt-2 underline text-lime-300" onClick={()=>patchSearch({enabled:false})}>Turn off Web search now</button>
+          </div>}
+          <div className="rounded-lg bg-slate-950/60 border border-emerald-800/50 p-2.5 space-y-1.5" role="status">
+            <p className="text-xs text-lime-200 break-words">{localState.text}</p>
+            {localState.phase==='loading'&&<div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden"><div className="h-full bg-lime-400" style={{width:Math.round(localState.progress*100)+'%'}}/></div>}
+            {localState.phase==='loading'&&<p className="text-[11px] text-slate-400">Model load {Math.round(localState.progress*100)}% · Keep this tab open.</p>}
+            {localState.phase==='ready'&&localState.model!==profile.model&&<p className="text-xs text-amber-200">The loaded model differs from your selection. Load the selected one below.</p>}
+          </div>
+          {localError&&<p className="text-xs text-amber-200 break-words">{localError}</p>}
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn btn-primary !text-xs disabled:opacity-50" onClick={prepareLocalModel}
+              disabled={localWork||localState.phase==='loading'||gpuCheck.ok===false||BROWSER_LLM.generating}>
+              {localWork||localState.phase==='loading'?'Loading model…':localState.phase==='ready'&&localState.model===profile.model?'Model ready':'Download / load model'}
+            </button>
+            {localState.phase==='ready'&&<button type="button" className="btn btn-soft !text-xs disabled:opacity-50" disabled={localWork||BROWSER_LLM.generating} onClick={freeLocalMemory}>Unload from GPU</button>}
+          </div>
+          <p className="text-[11px] leading-5 text-slate-400">Downloads stay cached after GPU unload, but browsers can evict them. This v27 provider is text-only, without image understanding, tool calling or Tavily. Switch providers for those features.</p>
+        </div>}
+
         </div>}
         {settingsPage==='safety'&&<div className="space-y-4">
         <div className="quota-card space-y-2"><div className="flex flex-wrap justify-between items-center gap-2"><strong className="text-xs text-emerald-300">Free plan limits &amp; local safety counters</strong>{provider!=='browser'&&<a className="text-xs underline text-lime-300" href={FREE_LINKS[provider]||FREE_LINKS.openrouter} target="_blank" rel="noopener noreferrer">{FREE_LINKS[provider]?'Official limits ↗':'View free limits ↗'}</a>}</div>
