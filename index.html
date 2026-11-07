@@ -1946,7 +1946,10 @@ function apiMessages(thread, systemPrompt, provider) {
     for(const file of files.filter(a => a.type==='document'))
       text += `\n\n[Attached file: ${file.name}${file.truncated?' (extracted text truncated)':''}]\n${file.text}\n[/End attached file]`;
     const images=files.filter(a => a.type==='image');
-    if(images.length) {
+    if(provider==='browser'){
+      // Leave historic image data out of text-only WebLLM input.
+      history.push({role:'user',content:(text||'')+(images.length?'\n[Earlier image attachment omitted: this local model has no vision.]':'')||'[Empty user message]'});
+    } else if(images.length){
       history.push({role:'user',content:[{type:'text',text:text||'Please analyse the attached image(s).'},...images.map(a => ({type:'image_url',image_url:{url:a.dataUrl}}))]});
     } else history.push({role:'user',content:text||'Please analyse the attached file(s).'});
   }
@@ -4263,6 +4266,8 @@ function App() {
   const [draft,setDraft]=useState(''),[attachments,setAttachments]=useState([]),[busy,setBusy]=useState(null),[notice,setNotice]=useState('');
   const [reading,setReading]=useState(false);
   const [imageMode,setImageMode]=useState(false);
+  const [browserProgress,setBrowserProgress]=useState(browserModelStatus);
+  useEffect(()=>subscribeBrowserModelStatus(setBrowserProgress),[]);
   const [usageRevision,setUsageRevision]=useState(0);
   const [showLatest,setShowLatest]=useState(false);
   const [speakingMessageId,setSpeakingMessageId]=useState(null);
@@ -5196,15 +5201,24 @@ function App() {
         <span className="text-emerald-200 font-bold">FREE ONLY · No paid models or search</span>
         <button className="text-amber-200 underline shrink-0" onClick={()=>setSettingsOpen(true)}>Usage limits / billing warning</button>
       </div>
+      {settings.provider==='browser'&&!imageMode&&<div className="px-3 py-2 border-b border-emerald-800/50 bg-[#081b11] text-xs">
+        <div className="max-w-4xl mx-auto flex items-center gap-2">
+          <Icon name="layers" size={16} className="text-lime-400"/>
+          <span className="flex-1 min-w-0 text-emerald-200 truncate" title={browserProgress.text}>{browserProgress.phase==='loading'?'Loading local model: ':browserProgress.phase==='generating'?'Generating on your GPU: ':'On-device inference: '}{browserProgress.text}</span>
+          <button type="button" className="underline text-lime-300 shrink-0" onClick={()=>setSettingsOpen(true)}>Model settings</button>
+        </div>
+        {browserProgress.phase==='loading'&&<div className="max-w-4xl mx-auto h-1.5 bg-slate-800 rounded-full overflow-hidden mt-2"><div className="h-full bg-lime-400" style={{width:Math.round(browserProgress.progress*100)+'%'}}/></div>}
+        {settings.search.enabled&&<div className="max-w-4xl mx-auto text-amber-200 mt-1">Turn off the globe / Web search to chat locally.</div>}
+      </div>}
       <div className="relative flex-1 min-h-0">
       <section ref={chatScrollRef} onScroll={onChatScroll} className="chat-scroll matrix-chat h-full overflow-y-auto thin-scroll" aria-label="Chat messages">
         <div className="max-w-4xl mx-auto px-4 sm:px-8 py-6 md:py-8">
           {!active?.messages.length ? <div className="matrix-hero flex flex-col items-center justify-center text-center min-h-[48dvh]">
-            <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-lime-500/30 to-emerald-600/10 border border-lime-500/30 grid place-items-center text-lime-300 mb-5"><Icon name="spark" size={30}/></div>
+            <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-lime-500/30 to-emerald-600/10 border border-lime-500/30 grid place-items-center text-lime-300 mb-5">{settings.provider==='browser'?<Icon name="layers" size={30}/>:<Icon name="spark" size={30}/>}</div>
             <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">What shall we work on?</h2>
-            <p className="text-slate-400 text-sm max-w-sm mt-3 leading-6">Chat with free and local AI models. Search the web, attach images, PDFs or code, and save generated snippets.</p>
+            <p className="text-slate-400 text-sm max-w-sm mt-3 leading-6">{settings.provider==='browser'?'This model generates text on your device using WebGPU. First use requires a large download. No API key or remote inference. Web search and image understanding are not supported here.':'Chat with free and local AI models. Search the web, attach images, PDFs or code, and save generated snippets.'}</p>
             <div className="flex gap-2 flex-wrap justify-center mt-6">{['Write a Python script','Explain a PDF','Create a React component'].map(s=><button key={s} className="btn btn-soft border border-slate-700/70 !text-xs" onClick={()=>{setDraft(s);inputRef.current?.focus();}}>{s}</button>)}</div>
-            {!['demo','ollama'].includes(settings.provider)&&(!profile.key?.trim()||!settings.freeTierConfirmed?.[settings.provider])&&<button type="button" onClick={()=>setWizardOpen(true)} className="btn btn-primary mt-5">Guided free AI setup · with the grumpy robot</button>}
+            {!['demo','ollama','browser'].includes(settings.provider)&&(!profile.key?.trim()||!settings.freeTierConfirmed?.[settings.provider])&&<button type="button" onClick={()=>setWizardOpen(true)} className="btn btn-primary mt-5">Guided free AI setup · with the grumpy robot</button>}
              <p className="text-xs text-slate-500 mt-6">Currently selected: <button className="text-lime-300 underline" onClick={()=>setSettingsOpen(true)}>{PROVIDERS[settings.provider].name}</button></p>
           </div> : <div className="space-y-6">{active.messages.map(m=><Message key={m.id} message={m}
               streaming={busy===active.id&&m.role==='assistant'&&m.status==='streaming'}
