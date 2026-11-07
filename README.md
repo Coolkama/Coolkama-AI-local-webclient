@@ -4,6 +4,24 @@ A standalone, mobile-first, free-tier-first LLM chat and web-search client built
 
 > **Project requirements:** [Scope and guardrails](docs/PROJECT_SCOPE.md). Read these before making changes.
 
+## On-device browser inference via WebGPU (experimental build v27)
+
+Build: \`2026-11-07-webgpu-local-inference-v27\`. The saved \`backup.html\` remains the complete, untouched v26 fallback.
+
+**In-Browser AI** is a sixth real inference provider, implemented with **WebLLM 0.2.87** loaded lazily from the vendor-documented CDN import. No API key, Ollama server, paid model or per-inference request is needed. All LLM token generation runs on the device's GPU through WebGPU. The model weights, engine library and WASM are initially downloaded from public third-party hosts; WebLLM caches model assets in the browser to reduce future downloads. Models must be loaded into GPU memory again on a fresh page visit, and browser cache eviction may require re-downloading.
+
+Supported prebuilt models, with WebLLM's approximate GPU memory budget:
+- SmolLM2 360M Instruct q4f32_1 — about 580 MB GPU; lightest option.
+- Llama 3.2 1B Instruct q4f16_1 — about 879 MB GPU; default and recommended starting point.
+- SmolLM2 1.7B Instruct q4f16_1 — about 1,775 MB GPU.
+- Llama 3.2 3B Instruct q4f16_1 — about 2,264 MB GPU.
+
+**Settings → AI provider** now checks secure-context/WebGPU adapter availability, shows estimated memory/download requirements and current loading progress, and offers **Download / load model** and **Unload from GPU**. The main chat header also shows model loading/generation status and a progress bar. Selecting the provider and sending a message loads the model automatically if not already loaded. The existing grumpy-robot wizard offers dedicated WebGPU setup instructions and tests a real local response.
+
+**Limitations and safeguards:** v27 supports streamed text chat and previously extracted text documents, including continuation, Stop/interrupt and existing rolling-context handling (bounded to ~2,600 estimated input tokens to fit a 4K model window). It intentionally does NOT expose Tavily tool calling, the image/diagram tool schemas, remote web search or image understanding to these local models. If the globe/Web search toggle is still on, the app explains that it must be turned off rather than silently ignoring it. An image attachment on the current request is explicitly rejected; previous image attachments in the conversation are not forwarded. Independent opt-in manual AI Horde image mode remains available. Unloading releases GPU memory but does not erase cached weights. Large downloads, shader/device incompatibility and browser memory pressure can cause failures; switching to the 360M model is the first fallback.
+
+**Verification:** Static source/feature guards and GitHub source/backup version checks passed. A real model download, local streaming, shader compilation, and Android/desktop WebGPU operation are *not* yet empirically verified on the user's browsers. No runtime-success claim should be made until that test.
+
 ## Click-by-click, provider-specific robot tours (build v26)
 
 The v25 wizard's generic three-item account checklist has been replaced with **a sequence of individual actions**, one screen at a time. The robotic assistant changes its dialogue at each action, with an explicit menu/breadcrumb path, direct official link (if appropriate), what to look for, a visible paid-service warning, contextual "I'm stuck" troubleshooting, a completion action, progress indicators, and Back navigation. Users with an existing API key can skip to key entry; completing an action is a user attestation, not a claim that the browser inspected a third-party account.
