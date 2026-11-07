@@ -3792,6 +3792,27 @@ function Settings({value,onChange,onClose,onOpenDiagnostics,onOpenWizard}) {
     imageHorde:{...defaultImageHorde(),...(previous.imageHorde||{}),...changes}}));
   const sectionTitles={home:'Settings',provider:'AI provider',web:'Web search',images:'Image generation',advanced:'Advanced settings',safety:'Usage & safety'};
   const [showKey,setShowKey]=useState(false),[showSearchKey,setShowSearchKey]=useState(false);
+  const [localState,setLocalState]=useState(browserModelStatus);
+  const [gpuCheck,setGpuCheck]=useState({ok:null,text:'Checking device…'});
+  const [localWork,setLocalWork]=useState(false),[localError,setLocalError]=useState('');
+  useEffect(()=>subscribeBrowserModelStatus(setLocalState),[]);
+  useEffect(()=>{
+    if(value.provider!=='browser')return;
+    let cancelled=false;checkBrowserWebGPU().then(result=>{if(!cancelled)setGpuCheck(result);});
+    return ()=>{cancelled=true};
+  },[value.provider]);
+  async function prepareLocalModel(){
+    setLocalWork(true);setLocalError('');
+    try{await loadBrowserLLM(value.profiles.browser.model);}
+    catch(error){setLocalError(String(error.message||error));}
+    finally{setLocalWork(false);}
+  }
+  async function freeLocalMemory(){
+    setLocalWork(true);setLocalError('');
+    try{await unloadBrowserLLM();}
+    catch(error){setLocalError(String(error.message||error));}
+    finally{setLocalWork(false);}
+  }
   const [loadingModels,setLoadingModels]=useState(false);
   const [modelError,setModelError]=useState('');
   const [discoveredAt,setDiscoveredAt]=useState(null);
@@ -3816,6 +3837,7 @@ function Settings({value,onChange,onClose,onOpenDiagnostics,onOpenWizard}) {
   const patchSearch=(values)=>onChange(s=>({...s,search:{...s.search,...values}}));
   const confirmed=!!value.freeTierConfirmed?.[provider];
   const providerStatus=provider==='demo'?'Demo mode'
+    :provider==='browser'?(localState.phase==='ready'&&localState.model===profile.model?'Loaded on device':'WebGPU · load needed')
     :provider==='ollama'?'Local endpoint'
     :(profile.key?.trim()&&confirmed?'Key and free-tier declaration saved':'Needs configuration');
   const webStatus=!value.search.enabled?'Off'
@@ -3830,7 +3852,7 @@ function Settings({value,onChange,onClose,onOpenDiagnostics,onOpenWizard}) {
       endpoint:provider==='gemini'?'native /v1beta/models':profile.url.replace(/\/+$/,'')+'/models'
     },discoveryTrace);
     try {
-      if(provider==='demo')return;
+      if(provider==='demo'||provider==='browser')return;
       enforceFreeOnly(provider,profile,{...value,freeTierConfirmed:{...value.freeTierConfirmed,[provider]:true}});
       let candidates=[];
       if(provider==='gemini'){
@@ -4016,7 +4038,7 @@ function Settings({value,onChange,onClose,onOpenDiagnostics,onOpenWizard}) {
         </div>
         </div>}
         {settingsPage==='provider'&&<div className="space-y-4">
-          <p className="text-xs text-slate-400 leading-5">Choose your AI provider and model. Your API key and free-tier declaration are saved locally.</p>
+          <p className="text-xs text-slate-400 leading-5">Choose a provider and model. In-Browser AI needs no API key; hosted providers require a confirmed free-tier account.</p>
         <div><label className="block text-xs font-semibold text-slate-300 mb-2">Provider</label><div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{Object.entries(PROVIDERS).map(([id,p])=><button key={id} onClick={()=>{patch({provider:id});setModelError('');}} className={`text-left px-3 py-2.5 rounded-xl border text-sm ${provider===id?'bg-lime-600/20 border-lime-500 text-lime-100':'bg-slate-900 border-slate-700 text-slate-300'}`}>{p.name}</button>)}</div></div>
         <details className="rounded-xl border border-slate-700/80 bg-slate-900/50 text-xs">
           <summary className="cursor-pointer px-3 py-2.5 font-semibold text-lime-200">Provider setup help &amp; official links</summary>
@@ -4024,7 +4046,34 @@ function Settings({value,onChange,onClose,onOpenDiagnostics,onOpenWizard}) {
             {info.keyUrl&&<a className="ml-1 inline-flex items-center gap-1 text-lime-300 underline" href={info.keyUrl} rel="noopener noreferrer" target="_blank">{provider==='ollama'?'Get Ollama':'Get an API key'} <Icon name="arrow" size={12}/></a>}
           </div>
         </details>
-        {provider!=='demo'&&<>
+
+        {provider==='browser'&&<div className="rounded-2xl border border-lime-500/40 bg-emerald-950/25 p-3.5 space-y-3">
+          <div className="flex items-center gap-2"><Icon name="layers" size={18} className="text-lime-300"/><strong className="text-sm text-lime-100">On-device WebGPU inference</strong></div>
+          <p className={'text-xs leading-5 '+(gpuCheck.ok===true?'text-emerald-200':'text-amber-200')}>{gpuCheck.ok===true?'✓ ':'⚠ '}{gpuCheck.text}</p>
+          <p className="text-xs text-slate-300 leading-5">No API key, hosted inference or per-request charge. The selected model downloads from public servers, is cached by this browser and then runs on this device. Initial download may take several minutes.</p>
+          <p className="text-xs text-slate-300 leading-5">Approximate <strong className="text-lime-200">{BROWSER_MODEL_SIZES[profile.model]?.vram||'?'} MB GPU memory</strong>, plus browser memory and storage ({BROWSER_MODEL_SIZES[profile.model]?.download||'large download'}). Start small on mobile.</p>
+          {value.search.enabled&&<div className="rounded-lg border border-amber-600/60 bg-amber-950/30 p-2.5 text-xs text-amber-100">
+            The local model cannot call web search or browser tools in v27.
+            <button type="button" className="block mt-2 underline text-lime-300" onClick={()=>patchSearch({enabled:false})}>Turn off Web search now</button>
+          </div>}
+          <div className="rounded-lg bg-slate-950/60 border border-emerald-800/50 p-2.5 space-y-1.5" role="status">
+            <p className="text-xs text-lime-200 break-words">{localState.text}</p>
+            {localState.phase==='loading'&&<div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden"><div className="h-full bg-lime-400" style={{width:Math.round(localState.progress*100)+'%'}}/></div>}
+            {localState.phase==='loading'&&<p className="text-[11px] text-slate-400">Model load {Math.round(localState.progress*100)}% · Keep this tab open.</p>}
+            {localState.phase==='ready'&&localState.model!==profile.model&&<p className="text-xs text-amber-200">The loaded model differs from your selection. Load the selected one below.</p>}
+          </div>
+          {localError&&<p className="text-xs text-amber-200 break-words">{localError}</p>}
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn btn-primary !text-xs disabled:opacity-50" onClick={prepareLocalModel}
+              disabled={localWork||localState.phase==='loading'||gpuCheck.ok===false||BROWSER_LLM.generating}>
+              {localWork||localState.phase==='loading'?'Loading model…':localState.phase==='ready'&&localState.model===profile.model?'Model ready':'Download / load model'}
+            </button>
+            {localState.phase==='ready'&&<button type="button" className="btn btn-soft !text-xs disabled:opacity-50" disabled={localWork||BROWSER_LLM.generating} onClick={freeLocalMemory}>Unload from GPU</button>}
+          </div>
+          <p className="text-[11px] leading-5 text-slate-400">Downloads stay cached after GPU unload, but browsers can evict them. This v27 provider is text-only, without image understanding, tool calling or Tavily. Switch providers for those features.</p>
+        </div>}
+
+        {provider!=='demo'&&provider!=='browser'&&<>
           {provider!=='ollama'&&<div><label className="block text-xs font-semibold text-slate-300 mb-2">API key (FREE-tier account only)</label><div className="relative"><input className="field pr-12" type={showKey?'text':'password'} placeholder="Paste your FREE-tier API key" autoComplete="off" value={profile.key} onChange={e=>onChange(s=>({...s,profiles:{...s.profiles,[s.provider]:{...s.profiles[s.provider],key:e.target.value}},freeTierConfirmed:{...s.freeTierConfirmed,[s.provider]:false}}))}/><button className="absolute right-3 top-2.5 text-slate-400" onClick={()=>setShowKey(!showKey)} aria-label="Show or hide API key"><Icon name={showKey?'eyeoff':'eye'}/></button></div></div>}
           {provider==='ollama'
             ?<div><label className="block text-xs font-semibold text-slate-300 mb-2">Ollama endpoint (private LAN or localhost only)</label>
@@ -4039,7 +4088,7 @@ function Settings({value,onChange,onClose,onOpenDiagnostics,onOpenWizard}) {
             </details>}
           {provider!=='ollama'&&<label className="flex gap-2 items-start rounded-xl border border-amber-700/60 bg-amber-950/20 p-3 text-xs leading-5 text-amber-100"><input className="mt-1 h-4 w-4 accent-emerald-500 shrink-0" type="checkbox" checked={confirmed} onChange={e=>updateConfirmation(e.target.checked)}/><span><strong>Required before API requests:</strong> I have checked that this API key uses the provider's genuine FREE tier, with NO billing-enabled project, Developer/pay-as-you-go plan or auto-recharge. I understand the app cannot independently verify account billing.</span></label>}
         </>}
-        <div><div className="flex justify-between items-center mb-2"><label className="text-xs font-semibold text-slate-300">Free models only</label>{provider!=='demo'&&<button className="text-xs text-lime-300 disabled:opacity-50" disabled={loadingModels} onClick={loadModels}>{loadingModels?'Loading…':'Discover FREE models'}</button>}</div>
+        <div><div className="flex justify-between items-center mb-2"><label className="text-xs font-semibold text-slate-300">Free models only</label>{provider!=='demo'&&provider!=='browser'&&<button className="text-xs text-lime-300 disabled:opacity-50" disabled={loadingModels} onClick={loadModels}>{loadingModels?'Loading…':'Discover FREE models'}</button>}</div>
           <select className="field mb-2" value={selectedModel} onChange={e=>patchProfile({model:e.target.value})}>
             {listedModels.map(([id,label])=><option key={id} value={id}>{label}</option>)}
           </select>
@@ -4053,13 +4102,13 @@ function Settings({value,onChange,onClose,onOpenDiagnostics,onOpenWizard}) {
           {provider==='ollama'&&<input className="field font-mono text-xs" spellCheck="false" value={profile.model} onChange={e=>patchProfile({model:e.target.value})} placeholder="Locally installed Ollama model name"/>}
           <details className="mt-1 text-[11px] text-emerald-200/80">
             <summary className="cursor-pointer py-1">How are free models selected?</summary>
-            <p className="mt-1 leading-5">Custom paid model IDs are disabled. OpenRouter discovery requires zero pricing and a <code>:free</code> variant; with Web enabled it also requires advertised tool support. Groq/Gemini discovery uses free-tier allowlists; Ollama models run locally.</p>
+            <p className="mt-1 leading-5">Custom paid model IDs are disabled. OpenRouter discovery requires zero pricing and a <code>:free</code> variant; with Web enabled it also requires advertised tool support. Groq/Gemini discovery uses free-tier allowlists; Ollama and In-Browser AI run locally. The in-browser list contains verified prebuilt WebLLM models.</p>
           </details>
           {modelError&&<p className="text-xs text-amber-300 mt-1">{modelError}</p>}
         </div>
         </div>}
         {settingsPage==='safety'&&<div className="space-y-4">
-        <div className="quota-card space-y-2"><div className="flex flex-wrap justify-between items-center gap-2"><strong className="text-xs text-emerald-300">Free plan limits &amp; local safety counters</strong><a className="text-xs underline text-lime-300" href={FREE_LINKS[provider]||FREE_LINKS.openrouter} target="_blank" rel="noopener noreferrer">{FREE_LINKS[provider]?'Official limits ↗':'View free limits ↗'}</a></div>
+        <div className="quota-card space-y-2"><div className="flex flex-wrap justify-between items-center gap-2"><strong className="text-xs text-emerald-300">Free plan limits &amp; local safety counters</strong>{provider!=='browser'&&<a className="text-xs underline text-lime-300" href={FREE_LINKS[provider]||FREE_LINKS.openrouter} target="_blank" rel="noopener noreferrer">{FREE_LINKS[provider]?'Official limits ↗':'View free limits ↗'}</a>}</div>
           <p className="text-xs text-slate-300 leading-5">{FREE_DETAILS[provider]}</p>
           {LOCAL_CAPS[provider]&&<Quota provider={provider}/>}
           <p className="text-[11px] text-slate-500">Counters are based ONLY on requests from this browser. Failed requests still count. They do not reflect other apps/devices, actual provider token usage, or remaining account quota. Changing browser data can reset them.</p>
