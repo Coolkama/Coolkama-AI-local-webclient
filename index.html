@@ -731,12 +731,29 @@ async function unloadBrowserLLM(){
   BROWSER_LLM.engine=null;BROWSER_LLM.model=null;
   updateBrowserModelStatus({phase:'idle',model:null,progress:0,text:'Model unloaded from GPU. Cached download is retained.'});
 }
+
+async function loadBrowserModelForTurn(model,signal){
+  if(signal?.aborted)throw new DOMException('Stopped','AbortError');
+  if(!signal)return loadBrowserLLM(model);
+  // Stop should release the chat immediately even if a multi-GB model download
+  // cannot be cancelled by the upstream loader. The download may continue in
+  // the background and populate cache; no inference will run after cancellation.
+  return new Promise((resolve,reject)=>{
+    let finished=false;
+    const cancel=()=>{if(finished)return;finished=true;reject(new DOMException('Stopped','AbortError'));};
+    signal.addEventListener('abort',cancel,{once:true});
+    loadBrowserLLM(model).then(
+      engine=>{if(finished)return;finished=true;signal.removeEventListener('abort',cancel);resolve(engine);},
+      error=>{if(finished)return;finished=true;signal.removeEventListener('abort',cancel);reject(error);}
+    );
+  });
+}
 async function streamBrowserChat({profile,messages,temperature,signal,onToken=()=>{},trace={}}){
   if(signal?.aborted)throw new DOMException('Stopped','AbortError');
   if(BROWSER_LLM.generating)throw new Error('A local generation is already running.');
   const model=profile.model;
   const started=performance.now();
-  const engine=await loadBrowserLLM(model);
+  const engine=await loadBrowserModelForTurn(model,signal);
   if(signal?.aborted)throw new DOMException('Stopped','AbortError');
   // WebLLM built-in models in this initial release are text-only. Tool calls,
   // remote search and vision attachments are intentionally not advertised.
@@ -3533,6 +3550,7 @@ function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
   const [saved,setSaved]=useState(false);
   const [testedOnSave,setTestedOnSave]=useState(false);
   const [testing,setTesting]=useState(false);
+  const testAbortRef=useRef(null);
   const [localProgress,setLocalProgress]=useState(browserModelStatus);
   useEffect(()=>subscribeBrowserModelStatus(setLocalProgress),[]);
   const info=PROVIDERS[draft.provider],guide=WIZARD_GUIDES[draft.provider];
@@ -3578,6 +3596,7 @@ function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
     if(testing)return;
     setTesting(true);setTest({status:'running',message:'Connecting directly to '+info.name+'…'});
     const controller=new AbortController();
+    testAbortRef.current=controller;
     const timeout=draft.provider==='browser'?null:setTimeout(()=>controller.abort(),30000);
     try{
       const p={...value.profiles[draft.provider],...draft};
@@ -3616,11 +3635,11 @@ function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
         throw new Error('The API responded but returned no text. Try another free model.');
       setTest({status:'ok',message:'Real model reply: '+answer.trim().slice(0,250)});
     }catch(error){
-      const message=controller.signal.aborted?'Connection timed out after 30 seconds.':
+      const message=controller.signal.aborted?(draft.provider==='browser'?'Local test stopped. The model download may still finish and be cached.':'Connection timed out or cancelled.'):
         error instanceof TypeError?'Browser could not reach the provider. Check your network, endpoint and CORS settings.':
           String(error.message||error);
       setTest({status:'error',message});
-    }finally{clearTimeout(timeout);setTesting(false);}
+    }finally{clearTimeout(timeout);if(testAbortRef.current===controller)testAbortRef.current=null;setTesting(false);}
   }
   return <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-5" role="dialog" aria-modal="true" aria-label="Grumpy robot free AI setup wizard">
     <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={testing?undefined:onClose}/>
@@ -3628,7 +3647,7 @@ function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
       <div className="absolute inset-0 pointer-events-none opacity-20" style={{backgroundImage:'linear-gradient(110deg, transparent 40%, #194f34 41%, transparent 42%),linear-gradient(#63f28e17 1px, transparent 1px),linear-gradient(90deg,#63f28e15 1px,transparent 1px)',backgroundSize:'100% 100%,28px 28px,28px 28px'}}/>
       <div className="relative px-4 sm:px-6 pt-4 pb-3 border-b border-lime-800/40 flex items-center justify-between gap-3">
         <div><div className="text-[10px] uppercase tracking-[.27em] text-lime-400 font-bold">Tight Arse AI · Guided setup</div><h2 className="text-xl font-black text-lime-100">FREE AI. NO NONSENSE.</h2></div>
-        <button type="button" className="rounded-xl border border-emerald-800 p-2.5 hover:bg-emerald-950/80 text-slate-300 disabled:opacity-40" disabled={testing} onClick={onClose} aria-label="Close setup wizard"><Icon name="x" size={19}/></button>
+        <button type="button" className="rounded-xl border border-emerald-800 p-2.5 hover:bg-emerald-950/80 text-slate-300 disabled:opacity-40" onClick={()=>{if(testing)testAbortRef.current?.abort();else onClose();}} aria-label={testing?'Cancel running test':'Close setup wizard'}><Icon name="x" size={19}/></button>
       </div>
       <div className="relative px-4 sm:px-6 pt-3 pb-2">
         <div className="grid grid-cols-5 gap-1.5">
