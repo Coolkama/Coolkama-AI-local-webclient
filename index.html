@@ -4188,6 +4188,7 @@ function Settings({value,onChange,onClose,onOpenDiagnostics,onOpenWizard}) {
           <div className="flex items-center gap-2"><Icon name="layers" size={18} className="text-lime-300"/><strong className="text-sm text-lime-100">On-device WebGPU inference</strong></div>
           <p className={'text-xs leading-5 '+(gpuCheck.ok===true?'text-emerald-200':'text-amber-200')}>{gpuCheck.ok===true?'✓ ':'⚠ '}{gpuCheck.text}</p>
           <p className="text-xs text-slate-300 leading-5">No API key, hosted inference or per-request charge. The selected model downloads from public servers, is cached by this browser and then runs on this device. Initial download may take several minutes.</p>
+          <p className="text-[11px] text-emerald-300">WebLLM runtime: {window.__tightArseWebLLMVersion}{window.__tightArseWebLLMVersion==='0.2.79'?' · Android compatibility test (older GPU execution path)':' · desktop current runtime'}</p>
           <p className="text-xs text-slate-300 leading-5">Approximate <strong className="text-lime-200">{BROWSER_MODEL_SIZES[profile.model]?.vram||'?'} MB GPU memory</strong>, plus browser memory and storage ({BROWSER_MODEL_SIZES[profile.model]?.download||'large download'}). Start small on mobile.</p>
           {value.search.enabled&&<div className="rounded-lg border border-amber-600/60 bg-amber-950/30 p-2.5 text-xs text-amber-100">
             The local model cannot call web search or browser tools in v27.
