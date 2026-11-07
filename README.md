@@ -4,6 +4,12 @@ A standalone, mobile-first, free-tier-first LLM chat and web-search client built
 
 > **Project requirements:** [Scope and guardrails](docs/PROJECT_SCOPE.md). Read these before making changes.
 
+## WebLLM system-message crash fix (v28)
+
+The first live in-browser chat reported: `System prompt should always be the first message in \u0060messages\u0060.` The shared conversation builder can intentionally produce multiple system messages (primary instructions, date/context notes, continuation guidance); the WebLLM chat template expects precisely one system message and requires it at the beginning. v28 consolidates **all** system instructions in their original order into one initial system message, without changing the API format for OpenRouter, Groq, Gemini or Ollama. A default initial system instruction is inserted when none exists. Manual continuation evidence is also inserted after the primary system prompt, rather than being prepended ahead of it.
+
+The actual v28 normalisation function passed checks for initial `hello`, late system instructions, missing system prompts, continuations and rejection of non-text content. Device-side inference is still pending verification. The original `backup.html` remains untouched v26.
+
 ## On-device browser inference via WebGPU (experimental build v27)
 
 Build: \`2026-11-07-webgpu-local-inference-v27\`. The saved \`backup.html\` remains the complete, untouched v26 fallback.
