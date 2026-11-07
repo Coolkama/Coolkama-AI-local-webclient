@@ -371,7 +371,7 @@
 <div id="root"></div>
 <script type="text/babel">
 const {useState, useEffect, useLayoutEffect, useRef, useMemo} = React;
-const APP_BUILD = '2026-11-06-provider-wizard-v25';
+const APP_BUILD = '2026-11-07-guided-provider-tour-v26';
 const SIDEBAR_ROBOT_IMAGE=window.__tightArseSidebarRobot||'';
 const STORAGE_KEY = 'llm-workbench-v1';
 const USAGE_KEY = 'llm-workbench-free-only-usage-v1';
@@ -3179,8 +3179,162 @@ const WIZARD_GUIDES = {
     warning:'Test Mode is a simulator, not a real language model.'
   }
 };
+
+/* The official websites cannot be inspected or controlled from this cross-origin
+   static page. Each instruction is a human-confirmed action, never a fabricated
+   "we created your key" status. Keep paths aligned with provider documentation. */
+const WIZARD_TOURS={
+  openrouter:[
+    {title:'Sign in to OpenRouter',robot:'First job: get through the front door. I am not making an account for you.',
+      path:['OpenRouter','Sign in / Sign up'],url:'https://openrouter.ai/',link:'Open OpenRouter',
+      instruction:'Tap Sign in or Sign up. Choose a sign-in method and finish any email verification. If you are already signed in, this part is done.',
+      look:'A signed-in dashboard or an account/profile menu.',
+      trap:'Do not add a payment card just to use the free models.',
+      help:'If you were sent back to the login page, finish the email confirmation and sign in again. If you already see your account avatar, you can continue.'},
+    {title:'Keep your account free',robot:'This is the bit where they dangle shiny paid features. Ignore them.',
+      path:['Account','Credits / billing'],url:'https://openrouter.ai/',link:'Open your OpenRouter account',
+      instruction:'Check your account billing/credits area. Do not buy credits, enable Auto Recharge or follow an Add Credits prompt. Free model variants do not require a credit purchase.',
+      look:'Your account settings or credits information. It is fine if you have no purchased credits.',
+      trap:'The ordinary OpenRouter auto router and paid models are NOT the same as openrouter/free. We will choose the free one later.',
+      help:'The site may promote Buy credits as part of onboarding. Ignore it and go directly to the API Keys page in the next action; the free variants do not require a purchase.'},
+    {title:'Open the API Keys page',robot:'Now find the key cupboard. No need to touch any code.',
+      path:['Settings','API Keys'],url:'https://openrouter.ai/settings/keys',link:'Open API Keys',
+      instruction:'Open the API Keys page using this button. Look for a control such as Create Key or Create API Key.',
+      look:'A list of your API keys and an option to create one.',
+      trap:'You want an ordinary API key, not a management key or a paid subscription.',
+      help:'If the page asks you to log in, do that first. If the interface moves, open your profile/settings menu and find API Keys.'},
+    {title:'Create and label a key',robot:'Call the key Tight Arse AI. Might as well let them know we are cheap.',
+      path:['API Keys','Create Key'],url:'https://openrouter.ai/settings/keys',link:'Go to Create Key',
+      instruction:'Choose Create Key, enter a recognisable label such as Tight Arse AI and confirm the creation. Leave optional restrictions at defaults unless you understand them.',
+      look:'A new key dialog or one-time generated secret.',
+      trap:'A zero-dollar key spending limit is not the same as free-only model filtering; overly strict limits can prevent requests from working.',
+      help:'If you see optional limit, expiry or workspace fields, these vary by account. You can generally leave optional fields alone; do not purchase credits.'},
+    {title:'Copy the new key',robot:'Copy the secret now. This is not a treasure hunt I want to repeat.',
+      path:['New API key','Copy'],url:'https://openrouter.ai/settings/keys',link:'Return to your keys',
+      instruction:'Tap Copy on the newly created API key. Do not put it in an email, screenshot or chat. Then return to this wizard; the next screen has a private key field.',
+      look:'The key is copied to your clipboard. Some secret values are shown only once.',
+      trap:'Do not paste the key into a chat message; use the masked field inside this wizard.',
+      help:'If you closed the one-time secret before copying it, create a new key. Most providers cannot display the complete old key again.'}
+  ],
+  groq:[
+    {title:'Sign in to GroqCloud',robot:'Groq. Not Grok. Different beast. Let us start.',
+      path:['GroqCloud','Sign up / Log in'],url:'https://console.groq.com/',link:'Open GroqCloud Console',
+      instruction:'Sign up for GroqCloud or log into your existing account, and finish any verification.',
+      look:'The GroqCloud dashboard, with navigation to API Keys and Settings.',
+      trap:'The free account is enough to start. Do not upgrade while following this guide.',
+      help:'If sign-in redirects to the marketing site, use the GroqCloud Console link again after logging in.'},
+    {title:'Check your organisation and project',robot:'We need a free project, not somebody else’s bill.',
+      path:['Console','Project selector'],url:'https://console.groq.com/',link:'Open project dashboard',
+      instruction:'Look at the project selector near the top of the console. Choose the project you will use for Tight Arse AI. API keys are scoped to the selected project.',
+      look:'A selected project name in the top navigation.',
+      trap:'Do not use a key from an organisation whose billing status you cannot check.',
+      help:'GroqCloud may create a default project for you. If you cannot select or manage a project, check your organisation permissions.'},
+    {title:'Confirm the Free plan',robot:'Look for FREE. If it says Developer, put your wallet away and stop.',
+      path:['Settings','Billing'],url:'https://console.groq.com/',link:'Open GroqCloud Settings',
+      instruction:'Open Settings, then Billing. Check that your organisation is on the Free tier. If it is on Developer/paid, do not continue with that organisation.',
+      look:'The account or organisation billing tier indicates Free.',
+      trap:'Groq Developer is pay-as-you-go. Spend limits are not a substitute for a Free-tier account.',
+      help:'If Billing is missing, you might not have owner permissions. Ask the organisation owner, or use an organisation you control and can verify.'},
+    {title:'Create your project API key',robot:'Excellent. Now we can get our little passport.',
+      path:['API Keys','Create API Key'],url:'https://console.groq.com/keys',link:'Open Groq API Keys',
+      instruction:'Choose API Keys in the console. Make sure the correct project is selected. Tap Create API Key and give it a recognisable name, such as Tight Arse AI.',
+      look:'A newly generated key and a Copy control.',
+      trap:'Only users with owner/developer privileges can manage project API keys.',
+      help:'If Create API Key is disabled, verify your project and role. The console states that team owners/developers can create keys.'},
+    {title:'Copy the key',robot:'Copy it, close the site, and bring it home. Simple.',
+      path:['New API key','Copy'],url:'https://console.groq.com/keys',link:'Return to keys page',
+      instruction:'Copy the secret from the newly created key. Return to Tight Arse AI and paste it into the masked input on the next screen.',
+      look:'The complete key has been copied; you may not be able to reveal it later.',
+      trap:'Do not copy your project ID or organisation ID instead of the API key.',
+      help:'If you missed the one-time display, generate a replacement key. Do not paste credentials into support messages.'}
+  ],
+  gemini:[
+    {title:'Open Google AI Studio',robot:'Google has several dashboards. I only want this one.',
+      path:['Google AI Studio','Sign in'],url:'https://aistudio.google.com/',link:'Open Google AI Studio',
+      instruction:'Sign in with your Google account and accept any initial terms. AI Studio may automatically give new users a project and key.',
+      look:'AI Studio with a Dashboard and API Keys area.',
+      trap:'This is the Gemini API through AI Studio, not a Gemini Advanced subscription.',
+      help:'If you already have access to AI Studio, skip creating another Google account. Google may display consent or region screens.'},
+    {title:'Find the project',robot:'We are checking the project. The project controls the money.',
+      path:['Dashboard','Projects'],url:'https://aistudio.google.com/',link:'Open AI Studio Dashboard',
+      instruction:'Open Dashboard, then Projects. Locate the project you plan to use. If you have an existing Cloud project that is not shown, AI Studio offers Import projects; you can also use a new default project.',
+      look:'Your project in the Projects view, with billing tier information.',
+      trap:'Do not select an existing paid Cloud Billing project just because you recognise the name.',
+      help:'Google says existing Cloud users sometimes need to import a project into AI Studio. Choose a project only when you can verify that billing is disabled.'},
+    {title:'Verify it is Free Tier',robot:'This one is important. An API key is NOT a promise of free usage.',
+      path:['Projects','Billing Tier: Free'],url:'https://aistudio.google.com/',link:'View Projects in AI Studio',
+      instruction:'In the Projects view, check the Billing Tier column for your chosen project. It must be Free. Do NOT click Set up billing, Prepay or an upgrade prompt.',
+      look:'The chosen project displays Free as its billing tier.',
+      trap:'Paid projects may charge for API use. A free-capable model does not make a paid project safe.',
+      help:'If you see Paid, Prepay, Postpay or an attached billing account, stop and choose a genuinely Free Tier project. Consult Google’s official billing guide if needed.'},
+    {title:'Find or create your API key',robot:'Google might have made a key already. At least somebody is doing the work.',
+      path:['Dashboard','API Keys','Create API key'],url:'https://aistudio.google.com/apikey',link:'Open AI Studio API Keys',
+      instruction:'Open API Keys. You may already see a key for the chosen free project. Otherwise tap Create API key and select that same Free Tier project.',
+      look:'An API key associated with the Free Tier project you checked.',
+      trap:'Do not click the nearby Set up billing option. Use the correct project.',
+      help:'If Create API key is disabled, you may lack project permissions. Make a new project you control or ask the administrator; do not choose a paid project as a workaround.'},
+    {title:'Copy the key',robot:'One click left before the model gets its turn.',
+      path:['API Keys','Copy key'],url:'https://aistudio.google.com/apikey',link:'Return to Google API Keys',
+      instruction:'Copy the API key belonging to your confirmed Free Tier project. Return here and paste it in the next screen.',
+      look:'A copied API key associated with the correct project, not a project ID.',
+      trap:'Never paste the key into a chat or a shared screenshot.',
+      help:'If the key looks restricted or is an older standard key, Google’s current API Keys guide explains how to create a new auth key.'}
+  ],
+  ollama:[
+    {title:'Download Ollama to your PC',robot:'Finally, a model you can run without asking a cloud company.',
+      path:['Ollama','Download'],url:'https://ollama.com/download',link:'Open Ollama downloads',
+      instruction:'On the computer that will run the model, choose your operating system and download Ollama. Do not sign up for a cloud plan.',
+      look:'A Windows, macOS or Linux Ollama installer or command.',
+      trap:'Ollama now also offers cloud models. For this guide use downloaded local models, not models ending in :cloud.',
+      help:'Make sure you install on the machine that will actually perform inference. Installing on your phone will not make your PC server available.'},
+    {title:'Install and launch Ollama',robot:'Install it. Ideally without reading forty pages of terms.',
+      path:['Installer','Launch Ollama'],url:'https://ollama.com/download',link:'Installation page',
+      instruction:'Run the installer and launch Ollama. It should start the local background server; leave it running.',
+      look:'The Ollama app is installed and available on your computer.',
+      trap:'Do not expose port 11434 directly to the public internet.',
+      help:'If the ollama command is not recognised after install, reopen your terminal or restart the application.'},
+    {title:'Download a model locally',robot:'The model must be on your computer. Cloud is not cheap by definition.',
+      path:['Terminal','ollama pull gemma4'],url:'https://docs.ollama.com/quickstart',link:'Open Ollama quickstart',
+      instruction:'Open Terminal or PowerShell and run the command below. Wait until the model finishes downloading. You can pick another local model if you prefer.',
+      code:'ollama pull gemma4',
+      look:'A completed download, rather than an error or a request to buy cloud credits.',
+      trap:'Avoid model names with :cloud; those use hosted inference and may incur costs.',
+      help:'If gemma4 is unavailable in your installation, open Ollama’s model library and choose another local model. You can enter its exact ID in the model step.'},
+    {title:'Check it is installed',robot:'Trust, but verify. Mostly verify.',
+      path:['Terminal','ollama list'],url:'https://docs.ollama.com/quickstart',link:'Ollama documentation',
+      instruction:'In the same terminal run the command below. Find your model in the list. Use the exact model name shown.',
+      code:'ollama list',
+      look:'A list containing your downloaded model name and size.',
+      trap:'Downloading an Ollama cloud model is not a local-only setup.',
+      help:'If nothing is listed, the download did not finish or you installed Ollama on a different machine.'},
+    {title:'Choose the right connection address',robot:'If you are on a phone: localhost means your PHONE, not your PC. I keep telling people.',
+      path:['Ollama server','Connection address'],url:'https://docs.ollama.com/faq',link:'Read Ollama network FAQ',
+      instruction:'If this web page runs on the same PC, leave the default http://localhost:11434/v1. On your phone, the PC needs a private LAN address and explicitly configured host/CORS permissions; enter that address on the next screen.',
+      look:'Same-computer URL: http://localhost:11434/v1. Phone-to-PC URL: http://YOUR-PC-LAN-IP:11434/v1 (only after secure LAN setup).',
+      trap:'An HTTPS site may block insecure HTTP LAN requests; the wizard cannot bypass browser restrictions.',
+      help:'Use the official Ollama FAQ for OLLAMA_HOST and OLLAMA_ORIGINS. Keep the service restricted to your trusted network and do not port-forward it publicly.'}
+  ],
+  demo:[
+    {title:'No account required',robot:'No account, no key. A fine financial arrangement.',
+      path:['Tight Arse AI','Test Mode'],url:'',link:'',
+      instruction:'This mode is built into the webpage. It streams a simulated reply so you can explore the chat interface without calling an AI provider.',
+      look:'No account, credit card or API key is needed.',
+      trap:'Test Mode is not real AI inference.',
+      help:'If you want real text generation later, reopen this wizard and choose OpenRouter, Groq, Gemini or your local Ollama.'},
+    {title:'Try the demo',robot:'Ready to pretend to be an expensive language model?',
+      path:['Test Mode','Continue'],url:'',link:'',
+      instruction:'Continue through the rest of the wizard and select the offline-demo model. Your final test will run locally.',
+      look:'An offline-demo model option.',
+      trap:'Do not judge real model quality from the simulated response.',
+      help:'You can switch provider in Settings or reopen this tour at any time.'}
+  ]
+};
+
 function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
   const [step,setStep]=useState(0);
+  const [guideIndex,setGuideIndex]=useState(0);
+  const [guideHelp,setGuideHelp]=useState(false);
+  const [guideCompleted,setGuideCompleted]=useState({});
   const [draft,setDraft]=useState(()=>{
     const id=value.provider;
     const p=value.profiles[id]||freshProfiles()[id];
@@ -3195,6 +3349,7 @@ function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
   const [testing,setTesting]=useState(false);
   const info=PROVIDERS[draft.provider],guide=WIZARD_GUIDES[draft.provider];
   const hosted=!['ollama','demo'].includes(draft.provider);
+  const tour=WIZARD_TOURS[draft.provider],action=tour[Math.min(guideIndex,tour.length-1)];
   const labels=['Choose','Account','Key / connection','Model','Test'];
   const stored=(value.discoveredModels?.[draft.provider]||[]).filter(id=>isApprovedModel(draft.provider,id));
   const suggested=info.models.filter(([id])=>isApprovedModel(draft.provider,id));
@@ -3202,8 +3357,7 @@ function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
   const models=menu.some(([id])=>id===draft.model)?menu:[...menu,[draft.model,draft.model+' · selected']];
   const sentences=[
     'Fine. I will help you get AI working without selling a kidney.',
-    draft.provider==='demo'?'This one costs exactly nothing. It also thinks exactly nothing.':
-      'Use the official site. Do NOT let anyone talk you into a paid plan.',
+    action.robot,
     hosted?'Paste the key here. I will not send it to any service except the provider you choose.':
       draft.provider==='ollama'?'Point me at your private Ollama server. No cloud required.':'No key. No credit card. No excuses.',
     'Pick a free model. The expensive ones are not invited.',
@@ -3216,6 +3370,7 @@ function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
       model:isApprovedModel(id,p.model)?p.model:PROVIDERS[id].model,
       confirmed:!!value.freeTierConfirmed?.[id]});
     setTest({status:'idle',message:''});setShowKey(false);
+    setGuideIndex(0);setGuideHelp(false);setGuideCompleted({});
   }
   function change(changes){setDraft(d=>({...d,...changes}));setTest({status:'idle',message:''});}
   const allowed=step!==2||(hosted?!!draft.key.trim()&&draft.confirmed:true);
@@ -3311,10 +3466,52 @@ function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
           <p className="text-xs text-amber-200/90">Free tiers have limits. This app cannot guarantee zero bills if you link a paid account.</p>
         </div>}
         {step===1&&<div className="space-y-3">
-          <h3 className="text-lg font-bold text-lime-100">Get set up with {info.name}</h3>
-          <ol className="space-y-2">{guide.steps.map((s,i)=><li key={i} className="flex gap-3 rounded-xl bg-slate-900/65 border border-slate-800/80 p-3"><span className="shrink-0 w-6 h-6 grid place-items-center rounded-full bg-emerald-800/40 text-lime-300 font-bold text-xs">{i+1}</span><span className="text-sm text-slate-200 leading-5">{s}</span></li>)}</ol>
-          {info.keyUrl&&<a className="btn btn-primary inline-flex items-center gap-2" href={info.keyUrl} target="_blank" rel="noopener noreferrer">{guide.linkText}<Icon name="arrow" size={16}/></a>}
-          <p className="rounded-xl border border-amber-700/40 bg-amber-950/20 text-amber-100 text-xs leading-5 p-3">{guide.warning}</p>
+          <div className="flex items-center justify-between gap-3">
+            <div><h3 className="text-lg font-bold text-lime-100">Follow me. One click at a time.</h3>
+              <p className="text-xs text-slate-400 mt-1">Action {guideIndex+1} of {tour.length} for {info.name}</p></div>
+            {hosted&&<button type="button" className="text-[11px] shrink-0 text-lime-300 underline" onClick={()=>setStep(2)}>Already have a key?</button>}
+          </div>
+          <div className="flex gap-1" aria-label="Provider onboarding progress">
+            {tour.map((s,i)=><button type="button" key={i} aria-label={'Show action '+(i+1)+': '+s.title}
+              onClick={()=>{setGuideIndex(i);setGuideHelp(false)}}
+              className={'h-1.5 rounded-full flex-1 '+(i===guideIndex?'bg-lime-300':guideCompleted[i]?'bg-emerald-500':'bg-slate-700')}/>)}
+          </div>
+          <div className="rounded-2xl border border-emerald-700/60 bg-slate-900/70 overflow-hidden">
+            <div className="p-4 pb-3">
+              <p className="text-[10px] text-emerald-300 uppercase font-bold tracking-widest mb-1">Action {guideIndex+1} · {info.name}</p>
+              <h4 className="text-lg font-extrabold text-lime-100 leading-6">{action.title}</h4>
+              <p className="text-sm text-slate-200 leading-6 mt-3">{action.instruction}</p>
+              {action.code&&<div className="mt-3 p-2.5 rounded-lg bg-black/70 border border-emerald-800 flex items-center justify-between gap-2">
+                <code className="font-mono text-xs sm:text-sm text-lime-200 break-all">{action.code}</code>
+                <button type="button" className="btn btn-soft !py-1.5 !px-2.5 shrink-0" aria-label={'Copy '+action.code} onClick={()=>navigator.clipboard?.writeText(action.code)}><Icon name="copy" size={16}/></button>
+              </div>}
+            </div>
+            <div className="px-4 pb-3">
+              <p className="text-[10px] text-emerald-400 uppercase font-semibold tracking-widest mb-2">Where to go</p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {action.path.map((part,i)=><React.Fragment key={i}>{i>0&&<span className="text-emerald-600">›</span>}
+                  <span className={'text-xs rounded-md border px-2 py-1.5 '+(i===action.path.length-1?'bg-lime-500/20 border-lime-500/60 text-lime-100 font-bold':'bg-slate-950 border-slate-700 text-slate-300')}>{part}</span>
+                </React.Fragment>)}
+              </div>
+            </div>
+            {action.url&&<a href={action.url} target="_blank" rel="noopener noreferrer"
+              className="mx-4 mb-3 btn btn-primary flex justify-center items-center gap-2 !py-3">
+              {action.link}<Icon name="arrow" size={16}/></a>}
+            <div className="border-t border-emerald-800/60 p-3.5 space-y-2.5 bg-emerald-950/20">
+              <div className="flex items-start gap-2"><Icon name="check" size={16} className="shrink-0 text-lime-300 mt-0.5"/>
+                <p className="text-xs leading-5 text-emerald-100"><strong>What you should see:</strong> {action.look}</p></div>
+              <div className="flex items-start gap-2"><Icon name="alert-triangle" size={16} className="shrink-0 text-amber-300 mt-0.5"/>
+                <p className="text-xs leading-5 text-amber-100"><strong>Don't do this:</strong> {action.trap}</p></div>
+            </div>
+          </div>
+          <button type="button" className="w-full text-left rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-3 flex items-center justify-between gap-2 text-sm text-lime-200" onClick={()=>setGuideHelp(v=>!v)} aria-expanded={guideHelp}>
+            <span>I'm stuck — I can't see that</span><Icon name="chevron" size={16}/>
+          </button>
+          {guideHelp&&<div className="rounded-xl border border-amber-800/60 bg-amber-950/20 p-3 text-xs leading-5 text-amber-100">
+            {action.help}
+            <p className="mt-2 text-slate-300">Provider websites change. These are guidance screens; we cannot see or click inside your provider account from this webpage.</p>
+          </div>}
+          <p className="text-xs text-slate-400 leading-5">Once you've done this on the provider site, return to this tab and tap <strong className="text-lime-300">Done, next action</strong>. The robot won't claim you did something it cannot verify.</p>
         </div>}
         {step===2&&<div className="space-y-3">
           <h3 className="text-lg font-bold text-lime-100">{hosted?'Paste your API key':draft.provider==='ollama'?'Connect your own Ollama server':'Nothing to configure'}</h3>
@@ -3363,9 +3560,16 @@ function ProviderSetupWizard({value,onChange,onClose,onUsage}) {
       </div>
       <div className="relative flex items-center justify-between gap-2 border-t border-emerald-800/50 bg-[#091810] px-4 sm:px-6 py-3 safe-bottom">
         {step===5?<button type="button" className="btn btn-primary w-full justify-center py-3" onClick={onClose}>Start chatting</button>:<React.Fragment>
-          <button type="button" className="btn btn-soft disabled:opacity-40" disabled={step===0||testing} onClick={()=>setStep(n=>n-1)}>Back</button>
+          <button type="button" className="btn btn-soft disabled:opacity-40" disabled={step===0||testing}
+            onClick={()=>{if(step===1&&guideIndex>0){setGuideIndex(v=>v-1);setGuideHelp(false)}
+              else if(step===2){setStep(1);setGuideIndex(tour.length-1);setGuideHelp(false)}
+              else setStep(n=>n-1);}}>Back</button>
           <div className="flex gap-2 items-center">
-            {step===4?<React.Fragment>
+            {step===1?<button type="button" className="btn btn-primary text-xs sm:text-sm" onClick={()=>{
+              setGuideCompleted(previous=>({...previous,[guideIndex]:true}));
+              if(guideIndex===tour.length-1)setStep(2);
+              else{setGuideIndex(n=>n+1);setGuideHelp(false)}
+            }}>{guideIndex===tour.length-1?'Done · Enter connection':'Done, next action'} <Icon name="chevron" size={15}/></button>:step===4?<React.Fragment>
               {test.status!=='ok'&&<button type="button" className="btn btn-soft text-xs" disabled={testing} onClick={()=>{try{saveConfiguration()}catch(e){setTest({status:'error',message:e.message||String(e)})}}}>Save untested</button>}
               {test.status==='ok'&&<button type="button" className="btn btn-primary" onClick={()=>{try{saveConfiguration()}catch(e){setTest({status:'error',message:e.message||String(e)})}}}>Finish setup</button>}
             </React.Fragment>:<button type="button" className="btn btn-primary" disabled={!allowed||testing} onClick={()=>setStep(n=>n+1)}>{step===0?'Get started':'Continue'}</button>}
